@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "NuevaMente API"
     VERSION: str = "0.1.0"
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: str
 
     # CORS: Orígenes permitidos (Frontend Streamlit)
     CORS_ORIGINS: Union[List[str], str] = [
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
             if v.startswith("[") and v.endswith("]"):
                 try:
                     return json.loads(v)
-                except Exception:
+                except json.JSONDecodeError:
                     pass
             return [i.strip() for i in v.split(",") if i.strip()]
         elif isinstance(v, list):
