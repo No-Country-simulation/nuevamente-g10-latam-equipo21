@@ -44,7 +44,8 @@ class Settings(BaseSettings):
 
     # Configuración de Google Gemini
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL_NAME: str = "gemini-1.5-flash"
+    GEMINI_MODEL_NAME: str = "gemini-3.8-flash"
+    GEMINI_TIMEOUT_SECONDS: float = 30.0
 
     # Vector Store (ChromaDB)
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"

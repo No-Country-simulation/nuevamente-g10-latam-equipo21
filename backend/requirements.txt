@@ -5,3 +5,8 @@ pydantic-settings==2.15.0
 python-dotenv==1.2.3
 pytest==9.1.1
 httpx==0.28.1
+
+# NM-08: orquestación LLM (LangChain + Gemini, definidos en NM-01)
+langchain-core==1.6.4
+langchain-google-genai==4.4.0
+google-genai==2.25.0
