@@ -1,7 +1,8 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import health
+from app.api.v1.endpoints import adaptar, health
 
 api_router = APIRouter()
 
 # Registro modular de routers
 api_router.include_router(health.router, tags=["Health"])
+api_router.include_router(adaptar.router, tags=["Adaptacion"])
