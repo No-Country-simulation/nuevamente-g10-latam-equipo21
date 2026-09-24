@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ChromaDB local persistence
+chroma_db/
+backend/chroma_db/
+
+# Benchmark local NM-05
+chroma_benchmark_nm05/
+backend/chroma_benchmark_nm05/
