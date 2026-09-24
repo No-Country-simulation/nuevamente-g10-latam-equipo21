@@ -78,6 +78,27 @@ def test_generate_json_traduce_json_invalido_a_llm_provider_error(monkeypatch):
         provider.generate_json([HumanMessage(content="hola")])
 
 
+def test_reintentos_se_traducen_a_intentos_totales_del_sdk(monkeypatch):
+    """
+    El SDK cuenta intentos totales en `max_retries` (incluye el pedido original): 3 reintentos
+    equivalen a 4 intentos, y 0 reintentos a un único intento. Un default implícito del SDK
+    (6 intentos) dejaría la petición esperando mucho más que GEMINI_TIMEOUT_SECONDS.
+    """
+    capturado: dict = {}
+
+    def _fabrica(**kwargs):
+        capturado.update(kwargs)
+        return _ChatModelFalso(contenido="{}")
+
+    monkeypatch.setattr(gemini_provider_module, "ChatGoogleGenerativeAI", _fabrica)
+
+    GeminiProvider(model="modelo-de-prueba", api_key="fake-key-no-real", timeout=1.0)
+    assert capturado["max_retries"] == 4
+
+    GeminiProvider(model="modelo-de-prueba", api_key="fake-key-no-real", timeout=1.0, reintentos=0)
+    assert capturado["max_retries"] == 1
+
+
 def test_no_depende_de_una_gemini_api_key_real(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     falso = _ChatModelFalso(contenido="{}")

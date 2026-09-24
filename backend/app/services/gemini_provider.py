@@ -23,9 +23,15 @@ from app.services.llm_provider import LLMProviderError, LLMTimeoutError
 class GeminiProvider:
     """Proveedor de LLM sobre Gemini, vía `langchain-google-genai`."""
 
-    def __init__(self, *, model: str, api_key: str, timeout: float) -> None:
+    def __init__(
+        self, *, model: str, api_key: str, timeout: float, reintentos: int = 3
+    ) -> None:
         self._timeout = timeout
-        modelo_chat = ChatGoogleGenerativeAI(model=model, api_key=api_key, timeout=timeout)
+        self._intentos = reintentos + 1
+        # `max_retries` del SDK cuenta intentos totales, incluido el pedido original.
+        modelo_chat = ChatGoogleGenerativeAI(
+            model=model, api_key=api_key, timeout=timeout, max_retries=self._intentos
+        )
         # `response_mime_type` activa el modo JSON de Gemini sin atar la orquestación a un
         # schema concreto: la validación estricta contra el contrato (NM-07) queda para una
         # capa posterior que todavía no existe en el repo.
@@ -47,8 +53,8 @@ class GeminiProvider:
             return cadena.invoke(messages)
         except (TimeoutError, httpx.TimeoutException) as exc:
             raise LLMTimeoutError(
-                f"Gemini no respondió dentro de los {self._timeout}s configurados "
-                "(GEMINI_TIMEOUT_SECONDS)."
+                f"Gemini no respondió tras {self._intentos} intento(s) de {self._timeout}s "
+                "cada uno (GEMINI_TIMEOUT_SECONDS)."
             ) from exc
         except OutputParserException as exc:
             raise LLMProviderError(
