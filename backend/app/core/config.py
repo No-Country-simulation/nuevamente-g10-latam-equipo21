@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     ENVIRONMENT: str
 
+    # Feature flag: activa el endpoint mock de adaptación (NM-18) mientras
+    # NM-12 no implemente la pipeline real.
+    USE_MOCK_LLM: bool = False
+    
     # CORS: Orígenes permitidos (Frontend Streamlit)
     CORS_ORIGINS: Union[List[str], str] = [
         "http://localhost:8501",
