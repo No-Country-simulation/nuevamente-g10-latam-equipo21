@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # Vector Store (ChromaDB)
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"
 
+    # Recuperación semántica (NM-06)
+    RETRIEVAL_TOP_K: int = 5
+    RETRIEVAL_SCORE_THRESHOLD: float = 0.35
+    RETRIEVAL_MAX_CONTEXT_TOKENS: int = 2000
+
     # Oracle Cloud Infrastructure (OCI Object Storage)
     OCI_CONFIG_FILE: str = "~/.oci/config"
     OCI_PROFILE: str = "DEFAULT"
