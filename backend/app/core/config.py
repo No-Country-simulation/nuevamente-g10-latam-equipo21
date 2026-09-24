@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     # Configuración de Google Gemini
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL_NAME: str = "gemini-1.5-flash"
+    GEMINI_EMBEDDING_MODEL_NAME: str = "gemini-embedding-001"
 
     # Vector Store (ChromaDB)
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"
