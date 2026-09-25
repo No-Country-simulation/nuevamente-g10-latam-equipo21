@@ -1,10 +1,10 @@
 """
 Construcción de los mensajes de prompt para la orquestación de adaptación de contenido (NM-08).
 
-Combina el prompt base versionado (prompts/adaptacion_base.md, contenido estático) con las
-instrucciones de personalización por eje (prompts/personalizacion.py) y los datos propios de la
-petición, usando las utilidades de LangChain (`PromptTemplate`, tipos de mensaje) definidas como
-framework de orquestación en NM-01.
+Combina el prompt base versionado (prompts/adaptacion_base.md, contenido estático), la plantilla
+del mensaje de usuario (prompts/adaptacion_usuario.md) y las instrucciones de personalización por
+eje (prompts/personalizacion.py) con los datos propios de la petición, usando las utilidades de
+LangChain (`PromptTemplate`, tipos de mensaje) definidas como framework de orquestación en NM-01.
 
 El prompt base se mantiene fuera de `ChatPromptTemplate` a propósito: es texto estático que
 incluye ejemplos JSON con llaves literales, y `ChatPromptTemplate` interpretaría esas llaves
@@ -22,25 +22,20 @@ from langchain_core.prompts import PromptTemplate
 from app.services.prompts import personalizacion
 
 _PROMPT_BASE_PATH = Path(__file__).parent / "prompts" / "adaptacion_base.md"
-
-_HUMAN_TEMPLATE = PromptTemplate.from_template(
-    'Documento fuente: "{documento_titulo}"\n\n'
-    "Contexto recuperado (única fuente de verdad permitida para el contenido factual):\n"
-    "{contexto_recuperado}\n\n"
-    "Instrucciones de personalización para esta adaptación:\n"
-    "- Perfil del destinatario: {instrucciones_perfil}\n"
-    "- Formato de salida solicitado: {instrucciones_formato}\n"
-    "  Ejemplo de un item en ese formato: {ejemplo_item_formato}\n"
-    "- Nicho / sector: {instrucciones_nicho}\n"
-    "- Nivel de detalle: {instrucciones_nivel_detalle}\n\n"
-    'Generá el JSON de "contenido_adaptado" siguiendo estrictamente las reglas indicadas en el '
-    "mensaje de sistema."
-)
+_PROMPT_USUARIO_PATH = Path(__file__).parent / "prompts" / "adaptacion_usuario.md"
 
 
 @lru_cache(maxsize=1)
 def _cargar_prompt_base() -> str:
     return _PROMPT_BASE_PATH.read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=1)
+def _cargar_plantilla_usuario() -> PromptTemplate:
+    # Sin el salto de línea final del archivo, para que el mensaje quede igual que antes.
+    return PromptTemplate.from_template(
+        _PROMPT_USUARIO_PATH.read_text(encoding="utf-8").rstrip("\n")
+    )
 
 
 def construir_mensajes_adaptacion(
@@ -66,7 +61,7 @@ def construir_mensajes_adaptacion(
     """
     formato_info = personalizacion.INSTRUCCIONES_FORMATO[formato_salida]
 
-    mensaje_humano = _HUMAN_TEMPLATE.format(
+    mensaje_humano = _cargar_plantilla_usuario().format(
         documento_titulo=documento_titulo,
         contexto_recuperado=contexto_recuperado,
         instrucciones_perfil=personalizacion.INSTRUCCIONES_PERFIL[perfil_destinatario],
