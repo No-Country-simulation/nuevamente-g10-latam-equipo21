@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     RETRIEVAL_SCORE_THRESHOLD: float = 0.35
     RETRIEVAL_MAX_CONTEXT_TOKENS: int = 2000
 
+    # Verificación de fidelidad (NM-09)
+    FIDELITY_SCORE_THRESHOLD: float = 0.7
+
     # Oracle Cloud Infrastructure (OCI Object Storage)
     OCI_CONFIG_FILE: str = "~/.oci/config"
     OCI_PROFILE: str = "DEFAULT"
