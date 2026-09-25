@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     OCI_PROFILE: str = "DEFAULT"
     OCI_NAMESPACE: str = ""
     OCI_BUCKET_NAME: str = "nuevamente-contenidos-educativos"
-    OCI_REGION: str = "us-ashburn-1"
+    OCI_REGION: str = "sa-saopaulo-1"
 
 
 settings = Settings()
