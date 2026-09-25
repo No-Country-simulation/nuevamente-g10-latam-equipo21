@@ -66,6 +66,31 @@ class GeminiEmbeddingService:
         semántica posterior.
         """
 
+        return self._embed(texts, task_type="RETRIEVAL_DOCUMENT")
+
+    def embed_query(
+        self,
+        text: str,
+    ) -> List[float]:
+        """
+        Genera el embedding de una consulta de búsqueda.
+
+        Se utiliza RETRIEVAL_QUERY (distinto de RETRIEVAL_DOCUMENT) porque Gemini recomienda
+        un task type específico para el lado consulta; mejora la calidad de la recuperación
+        frente a reutilizar el embedding de documento.
+        """
+
+        return self._embed([text], task_type="RETRIEVAL_QUERY")[0]
+
+    def _embed(
+        self,
+        texts: List[str],
+        task_type: str,
+    ) -> List[List[float]]:
+        """
+        Lógica común de generación de embeddings para un `task_type` dado.
+        """
+
         if not texts:
             return []
 
@@ -84,7 +109,7 @@ class GeminiEmbeddingService:
                 model=self.model_name,
                 contents=texts,
                 config=types.EmbedContentConfig(
-                    task_type="RETRIEVAL_DOCUMENT"
+                    task_type=task_type
                 ),
             )
 
