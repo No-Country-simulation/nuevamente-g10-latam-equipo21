@@ -9,8 +9,11 @@ registro en logs; no miden qué tan bien juzga un modelo real.
 import logging
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import settings
+from app.schemas.content import FlashcardItem
+from app.schemas.output import ContenidoAdaptadoSchema, EvaluacionCalidadSchema
 from app.services import fidelity_service
 from app.services.fidelity_service import calcular_score, evaluar_fidelidad
 from app.services.llm_provider import LLMProviderError, LLMTimeoutError
@@ -61,11 +64,16 @@ class VerificadorFake:
         self.respuesta = respuesta
         self.mensajes = None
 
-    def generate_json(self, messages):
+    def generate_structured(self, messages, schema):
         self.mensajes = messages
         if isinstance(self.respuesta, Exception):
             raise self.respuesta
-        return self.respuesta
+        try:
+            return schema.model_validate(self.respuesta)
+        except ValidationError as exc:
+            raise LLMProviderError(
+                "La respuesta del verificador no coincide con el esquema solicitado."
+            ) from exc
 
 
 class VerificadorPorEvidencia:
@@ -74,28 +82,34 @@ class VerificadorPorEvidencia:
     def __init__(self, afirmaciones):
         self.afirmaciones = afirmaciones
 
-    def generate_json(self, messages):
+    def generate_structured(self, messages, schema):
         # La evidencia va antes de "Contenido generado:" en el mensaje de usuario.
         evidencia = messages[1].content.split("Contenido generado:")[0].lower()
-        return {
-            "afirmaciones": [
-                {"item": 1, "texto": afirmacion, "respaldada": afirmacion.lower() in evidencia}
-                for afirmacion in self.afirmaciones
-            ],
-            "claridad_pedagogica": "Alta",
-            "observaciones": "Verificación de prueba.",
-        }
+        return schema.model_validate(
+            {
+                "afirmaciones": [
+                    {
+                        "item": 1,
+                        "texto": afirmacion,
+                        "respaldada": afirmacion.lower() in evidencia,
+                    }
+                    for afirmacion in self.afirmaciones
+                ],
+                "claridad_pedagogica": "Alta",
+                "observaciones": "Verificación de prueba.",
+            }
+        )
 
 
 def _contenido(*dorsos):
-    return {
-        "titulo": "Cachés",
-        "introduccion_contextualizada": "Vamos a ver qué es una caché.",
-        "items": [
-            {"frente": f"Pregunta {i}", "dorso": dorso, "pista_didactica": "pista"}
+    return ContenidoAdaptadoSchema(
+        titulo="Cachés",
+        introduccion_contextualizada="Vamos a ver qué es una caché.",
+        items=[
+            FlashcardItem(frente=f"Pregunta {i}", dorso=dorso, pista_didactica="pista")
             for i, dorso in enumerate(dorsos, start=1)
         ],
-    }
+    )
 
 
 def _respuesta(respaldadas, claridad="Alta", observaciones="Observación concreta."):
@@ -127,15 +141,23 @@ def test_devuelve_el_bloque_evaluacion_calidad_del_contrato():
     """Criterios 1 y 2: score entre 0 y 1, claridad válida y observaciones con texto."""
     resultado = _evaluar(VerificadorFake(_respuesta([True, True, False], "Media", "El item 2 no está respaldado.")))
 
-    assert set(resultado) == {"anclaje_fuente_score", "claridad_pedagogica", "observaciones"}
-    assert isinstance(resultado["anclaje_fuente_score"], float)
-    assert 0.0 <= resultado["anclaje_fuente_score"] <= 1.0
-    assert resultado["claridad_pedagogica"] in ("Alta", "Media", "Baja")
-    assert resultado["observaciones"] == "El item 2 no está respaldado."
+    assert isinstance(resultado, EvaluacionCalidadSchema)
+    assert set(resultado.model_dump()) == {
+        "anclaje_fuente_score",
+        "claridad_pedagogica",
+        "observaciones",
+    }
+    assert isinstance(resultado.anclaje_fuente_score, float)
+    assert 0.0 <= resultado.anclaje_fuente_score <= 1.0
+    assert resultado.claridad_pedagogica in ("Alta", "Media", "Baja")
+    assert resultado.observaciones == "El item 2 no está respaldado."
 
 
 def test_el_score_es_la_proporcion_de_afirmaciones_respaldadas():
-    assert _evaluar(VerificadorFake(_respuesta([True, True, True, False])))["anclaje_fuente_score"] == 0.75
+    assert (
+        _evaluar(VerificadorFake(_respuesta([True, True, True, False]))).anclaje_fuente_score
+        == 0.75
+    )
     assert calcular_score([True, False, False]) == 0.33
     assert calcular_score([True, True]) == 1.0
 
@@ -144,7 +166,7 @@ def test_sin_afirmaciones_el_score_es_cero_y_se_registra(caplog):
     with caplog.at_level(logging.WARNING, logger=_LOGGER):
         resultado = _evaluar(VerificadorFake(_respuesta([])))
 
-    assert resultado["anclaje_fuente_score"] == 0.0
+    assert resultado.anclaje_fuente_score == 0.0
     assert _avisos_de_fidelidad(caplog)
 
 
@@ -164,8 +186,8 @@ def test_contenido_con_afirmaciones_ausentes_puntua_menos_que_el_anclado():
         contenido=_contenido(*respaldadas, inventada),
     )
 
-    assert anclado["anclaje_fuente_score"] == 1.0
-    assert con_invento["anclaje_fuente_score"] < anclado["anclaje_fuente_score"]
+    assert anclado.anclaje_fuente_score == 1.0
+    assert con_invento.anclaje_fuente_score < anclado.anclaje_fuente_score
 
 
 def test_el_verificador_recibe_la_evidencia_y_el_contenido_numerado():
@@ -251,7 +273,7 @@ def test_sin_fragmentos_igual_se_le_pide_al_verificador_que_juzgue():
     resultado = _evaluar(verificador, store=VectorStoreFake([]))
 
     assert "(no se recuperaron fragmentos del documento)" in verificador.mensajes[1].content
-    assert resultado["anclaje_fuente_score"] == 0.0
+    assert resultado.anclaje_fuente_score == 0.0
 
 
 def test_un_score_bajo_el_umbral_se_registra_con_el_documento(caplog):
@@ -307,18 +329,6 @@ def test_una_respuesta_con_forma_inesperada_levanta_error_tipado(respuesta):
 def test_propaga_el_timeout_del_verificador_como_error_tipado():
     with pytest.raises(LLMTimeoutError):
         _evaluar(VerificadorFake(LLMTimeoutError("sin respuesta")))
-
-
-@pytest.mark.parametrize(
-    "contenido",
-    [
-        {"titulo": "Vacío", "introduccion_contextualizada": "", "items": []},
-        {"titulo": "Sin items", "introduccion_contextualizada": "Intro.", "items": "no es una lista"},
-    ],
-)
-def test_contenido_que_no_se_puede_verificar_levanta_value_error(contenido):
-    with pytest.raises(ValueError):
-        _evaluar(VerificadorFake(_respuesta([True])), contenido=contenido)
 
 
 def test_el_metodo_de_calculo_esta_documentado_en_el_modulo():

@@ -2,8 +2,7 @@
 Verificación de fidelidad del contenido generado contra el documento fuente (NM-09).
 
 Puntúa cuánto de lo que generó el LLM (NM-08) está respaldado por el documento original y devuelve
-el bloque `evaluacion_calidad` del contrato (docs/ARCHITECTURE.md, sección 4) como `dict`. La
-validación formal contra los esquemas de NM-07 la aplica quien integre el pipeline (NM-12).
+el bloque `evaluacion_calidad` del contrato como `EvaluacionCalidadSchema` validado por NM-07.
 
 Método de cálculo de `anclaje_fuente_score`
 -------------------------------------------
@@ -28,13 +27,16 @@ import json
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import PromptTemplate
+from pydantic import Field, StringConstraints
 
 from app.core.config import settings
-from app.services.llm_provider import LLMProvider, LLMProviderError
+from app.schemas.base import ContractSchema
+from app.schemas.output import ContenidoAdaptadoSchema, EvaluacionCalidadSchema
+from app.services.llm_provider import LLMProvider
 from app.services.retrieval_service import ensamblar_contexto, recuperar_contexto
 from app.services.vector_store import FragmentoRecuperado, VectorStore
 
@@ -43,8 +45,23 @@ logger = logging.getLogger(__name__)
 FRAGMENTOS_POR_UNIDAD = 3
 MAX_TOKENS_EVIDENCIA = 8000
 _MAX_CARACTERES_CONSULTA = 2000
-_CLARIDAD_VALIDA = ("Alta", "Media", "Baja")
 _DIRECTORIO_PROMPTS = Path(__file__).parent / "prompts"
+
+
+class AfirmacionVerificadaSchema(ContractSchema):
+    """Afirmación factual identificada por el verificador y su respaldo documental."""
+
+    item: int = Field(..., ge=0)
+    texto: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    respaldada: bool
+
+
+class VerificacionFidelidadLLMSchema(ContractSchema):
+    """Salida estructurada interna solicitada al LLM para calcular la evaluación pública."""
+
+    afirmaciones: list[AfirmacionVerificadaSchema]
+    claridad_pedagogica: Literal["Alta", "Media", "Baja"]
+    observaciones: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 @lru_cache(maxsize=1)
@@ -67,20 +84,17 @@ def _cadenas(valor: Any) -> list[str]:
         return [texto for elemento in valor.values() for texto in _cadenas(elemento)]
     if isinstance(valor, list):
         return [texto for elemento in valor for texto in _cadenas(elemento)]
+    if isinstance(valor, ContractSchema):
+        return _cadenas(valor.model_dump(mode="json"))
     return []
 
 
-def _unidades(contenido_adaptado: dict[str, Any]) -> list[tuple[int, str]]:
+def _unidades(contenido_adaptado: ContenidoAdaptadoSchema) -> list[tuple[int, str]]:
     """Pares (número, texto) de la introducción (0) y de cada item con texto (1, 2, ...)."""
-    items = contenido_adaptado.get("items")
-    if not isinstance(items, list):
-        raise ValueError("`contenido_adaptado` debe tener `items` como lista.")
-
     unidades: list[tuple[int, str]] = []
-    introduccion = contenido_adaptado.get("introduccion_contextualizada")
-    if isinstance(introduccion, str) and introduccion.strip():
-        unidades.append((0, introduccion.strip()))
-    for numero, item in enumerate(items, start=1):
+    if contenido_adaptado.introduccion_contextualizada.strip():
+        unidades.append((0, contenido_adaptado.introduccion_contextualizada.strip()))
+    for numero, item in enumerate(contenido_adaptado.items, start=1):
         texto = " ".join(_cadenas(item)).strip()
         if texto:
             unidades.append((numero, texto))
@@ -114,17 +128,16 @@ def _reunir_evidencia(
     return sorted(mejores.values(), key=lambda fragmento: fragmento.score, reverse=True)
 
 
-def _presentar_contenido(contenido_adaptado: dict[str, Any]) -> str:
+def _presentar_contenido(contenido_adaptado: ContenidoAdaptadoSchema) -> str:
     """Contenido numerado como lo ve el verificador: título, introducción (0) e items (1, 2, ...)."""
-    lineas: list[str] = []
-    titulo = contenido_adaptado.get("titulo")
-    if isinstance(titulo, str) and titulo.strip():
-        lineas.append(f"Título: {titulo.strip()}")
-    introduccion = contenido_adaptado.get("introduccion_contextualizada")
-    if isinstance(introduccion, str) and introduccion.strip():
-        lineas.append(f"Introducción: {introduccion.strip()}")
-    for numero, item in enumerate(contenido_adaptado["items"], start=1):
-        lineas.append(f"Item {numero}: {json.dumps(item, ensure_ascii=False)}")
+    lineas = [
+        f"Título: {contenido_adaptado.titulo.strip()}",
+        f"Introducción: {contenido_adaptado.introduccion_contextualizada.strip()}",
+    ]
+    for numero, item in enumerate(contenido_adaptado.items, start=1):
+        lineas.append(
+            f"Item {numero}: {json.dumps(item.model_dump(mode='json'), ensure_ascii=False)}"
+        )
     return "\n".join(lineas)
 
 
@@ -142,27 +155,6 @@ def _construir_mensajes(
     ]
 
 
-def _interpretar_respuesta(respuesta: Any) -> tuple[list[bool], str, str]:
-    """Devuelve (veredictos, claridad, observaciones) o levanta `LLMProviderError` si no tiene la forma."""
-    if isinstance(respuesta, dict):
-        afirmaciones = respuesta.get("afirmaciones")
-        claridad = respuesta.get("claridad_pedagogica")
-        observaciones = respuesta.get("observaciones")
-        forma_valida = (
-            isinstance(afirmaciones, list)
-            and all(
-                isinstance(afirmacion, dict) and isinstance(afirmacion.get("respaldada"), bool)
-                for afirmacion in afirmaciones
-            )
-            and claridad in _CLARIDAD_VALIDA
-            and isinstance(observaciones, str)
-            and bool(observaciones.strip())
-        )
-        if forma_valida:
-            return [a["respaldada"] for a in afirmaciones], claridad, observaciones.strip()
-    raise LLMProviderError("La respuesta del verificador de fidelidad no tiene la forma esperada.")
-
-
 def calcular_score(respaldadas: list[bool]) -> float:
     """Afirmaciones respaldadas sobre afirmaciones totales (0.0 si no hay ninguna)."""
     if not respaldadas:
@@ -173,18 +165,18 @@ def calcular_score(respaldadas: list[bool]) -> float:
 def evaluar_fidelidad(
     *,
     documento_id: str,
-    contenido_adaptado: dict[str, Any],
+    contenido_adaptado: ContenidoAdaptadoSchema,
     vector_store: VectorStore,
     llm_provider: LLMProvider,
     perfil_destinatario: str | None = None,
     top_k: int = FRAGMENTOS_POR_UNIDAD,
     umbral: float | None = None,
-) -> dict[str, Any]:
+) -> EvaluacionCalidadSchema:
     """
     Evalúa qué tan respaldado está `contenido_adaptado` por el documento `documento_id`.
 
-    Devuelve `{"anclaje_fuente_score", "claridad_pedagogica", "observaciones"}`, el bloque
-    `evaluacion_calidad` del contrato. `perfil_destinatario`, si se conoce, orienta la valoración de
+    Devuelve `EvaluacionCalidadSchema`, el bloque `evaluacion_calidad` del contrato.
+    `perfil_destinatario`, si se conoce, orienta la valoración de
     la claridad. `umbral` reemplaza a `settings.FIDELITY_SCORE_THRESHOLD` solo para el registro en
     logs; no altera el score.
 
@@ -203,8 +195,10 @@ def evaluar_fidelidad(
         contenido=_presentar_contenido(contenido_adaptado),
     )
 
-    respaldadas, claridad, observaciones = _interpretar_respuesta(llm_provider.generate_json(mensajes))
-    score = calcular_score(respaldadas)
+    verificacion = llm_provider.generate_structured(mensajes, VerificacionFidelidadLLMSchema)
+    score = calcular_score(
+        [afirmacion.respaldada for afirmacion in verificacion.afirmaciones]
+    )
 
     minimo = settings.FIDELITY_SCORE_THRESHOLD if umbral is None else umbral
     if score < minimo:
@@ -215,8 +209,8 @@ def evaluar_fidelidad(
             minimo,
         )
 
-    return {
-        "anclaje_fuente_score": score,
-        "claridad_pedagogica": claridad,
-        "observaciones": observaciones,
-    }
+    return EvaluacionCalidadSchema(
+        anclaje_fuente_score=score,
+        claridad_pedagogica=verificacion.claridad_pedagogica,
+        observaciones=verificacion.observaciones.strip(),
+    )
