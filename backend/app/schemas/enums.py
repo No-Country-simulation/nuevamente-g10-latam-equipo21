@@ -3,43 +3,27 @@ from enum import Enum
 
 class PerfilDestinatario(str, Enum):
     PRINCIPIANTE = "Principiante"
-    TRANSICION_CARRERA = "Transicion de Carrera"
-    DESARROLLADOR_JUNIOR = "Desarrollador Junior"
-    DESARROLLADOR_SEMI_SENIOR = "Desarrollador Semi Senior"
-    LIDER_TECNICO = "Lider Tecnico"
-    ARQUITECTO = "Arquitecto"
-    GESTOR = "Gestor"
-    EJECUTIVO_NO_TECNICO = "Ejecutivo No Tecnico"
+    DESARROLLADOR_JUNIOR_SEMISENIOR = "Desarrollador_Junior_SemiSenior"
+    LIDER_TECNICO_ARQUITECTO = "Lider_Tecnico_Arquitecto"
+    GESTOR_EJECUTIVO_NO_TECNICO = "Gestor_Ejecutivo_No_Tecnico"
 
 
 class FormatoSalida(str, Enum):
-
     TUTORIAL = "Tutorial"
-
     FLASHCARDS = "Flashcards"
-
     QUIZ = "Quiz"
-
-    RESUMEN_EJECUTIVO = "Resumen Ejecutivo"
-
-    GUION = "Guion"
+    RESUMEN_EJECUTIVO = "Resumen_Ejecutivo"
+    GUION_CLASE = "Guion_Clase"
 
 
 class NichoSector(str, Enum):
-
     FINTECH = "Fintech"
-
     SALUD = "Salud"
-
-    ECOMMERCE = "E-commerce"
-
+    ECOMMERCE = "Ecommerce"
     GENERAL = "General"
 
 
 class NivelDetalle(str, Enum):
-
-    BASICO = "Basico"
-
-    INTERMEDIO = "Intermedio"
-
-    AVANZADO = "Avanzado"
+    INTRODUCTORIO = "Introductorio"
+    DIDACTICO = "Didactico"
+    TECNICO_PROFUNDO = "Tecnico_Profundo"

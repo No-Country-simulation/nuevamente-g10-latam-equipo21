@@ -1,75 +1,94 @@
-from typing import Annotated, Literal, Union
+from typing import Literal, Union
 
 from pydantic import BaseModel, Field
 
 from app.schemas.content import (
-    FlashcardsContent,
-    GuionContent,
-    QuizContent,
-    ResumenContent,
-    TutorialContent,
+    FlashcardItem,
+    GuionItem,
+    QuizItem,
+    ResumenItem,
+    TutorialItem,
 )
-from app.schemas.enums import (
-    FormatoSalida,
-    NichoSector,
-    NivelDetalle,
-    PerfilDestinatario,
-)
+from app.schemas.enums import FormatoSalida, PerfilDestinatario
 
 
-ContenidoAdaptado = Annotated[
-    Union[
-        TutorialContent,
-        FlashcardsContent,
-        QuizContent,
-        ResumenContent,
-        GuionContent,
-    ],
-    Field(discriminator="formato_salida"),
+ContenidoItem = Union[
+    TutorialItem,
+    FlashcardItem,
+    QuizItem,
+    ResumenItem,
+    GuionItem,
 ]
 
 
 class MetadatosSchema(BaseModel):
-    titulo_original: str = Field(
+    perfil_aplicado: PerfilDestinatario
+
+    formato_generado: FormatoSalida
+
+    tiempo_estimado_estudio_minutos: int = Field(
         ...,
-        min_length=3,
-        description="Título del documento técnico original",
+        ge=0,
     )
-    perfil_destinatario: PerfilDestinatario
-    formato_salida: FormatoSalida
-    nicho_sector: NichoSector
-    nivel_detalle: NivelDetalle
+
+    conceptos_clave: list[str] = Field(
+        ...,
+        min_length=1,
+    )
+
+
+class ContenidoAdaptadoSchema(BaseModel):
+    titulo: str = Field(
+        ...,
+        min_length=1,
+    )
+
+    introduccion_contextualizada: str = Field(
+        ...,
+        min_length=1,
+    )
+
+    items: list[ContenidoItem] = Field(
+        ...,
+        min_length=1,
+    )
 
 
 class EvaluacionCalidadSchema(BaseModel):
-    puntaje: float = Field(
+    anclaje_fuente_score: float = Field(
         ...,
         ge=0,
-        le=100,
-        description="Puntaje de calidad del contenido entre 0 y 100",
+        le=1,
     )
-    observaciones: list[str] = Field(
-        default_factory=list,
-        description="Observaciones obtenidas durante la evaluación de calidad",
-    )
+
+    claridad_pedagogica: Literal["Alta", "Media", "Baja"]
+
+    observaciones: str
 
 
 class AlmacenamientoOCISchema(BaseModel):
-    guardado: bool = Field(
+    bucket: str = Field(
         ...,
-        description="Indica si el resultado fue almacenado correctamente en OCI",
+        min_length=1,
     )
-    referencia: str | None = Field(
-        default=None,
-        description="Referencia o identificador del contenido almacenado",
+
+    objeto_id: str = Field(
+        ...,
+        min_length=1,
     )
+
+    status_upload: Literal["completado", "error"]
 
 
 class OutputSchema(BaseModel):
-    status: Literal["success"] = "success"
+    status: Literal["exito", "error"]
+
     metadatos: MetadatosSchema
-    contenido_adaptado: ContenidoAdaptado
+
+    contenido_adaptado: ContenidoAdaptadoSchema
+
     evaluacion_calidad: EvaluacionCalidadSchema
+
     almacenamiento_oci: AlmacenamientoOCISchema
 
 
@@ -79,6 +98,7 @@ class ErrorSchema(BaseModel):
         min_length=1,
         description="Código identificador del error",
     )
+
     mensaje: str = Field(
         ...,
         min_length=1,

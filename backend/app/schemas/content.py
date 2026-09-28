@@ -2,103 +2,51 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 class FlashcardItem(BaseModel):
-    pregunta: str = Field(
+    frente: str = Field(
         ...,
-        min_length=3,
-        description="Pregunta o concepto presentado en la flashcard",
+        min_length=1,
+        description="Contenido mostrado en el frente de la flashcard",
     )
 
-    respuesta: str = Field(
+    dorso: str = Field(
         ...,
-        min_length=3,
-        description="Respuesta o explicación asociada a la flashcard",
+        min_length=1,
+        description="Contenido mostrado en el dorso de la flashcard",
+    )
+
+    pista_didactica: str = Field(
+        ...,
+        min_length=1,
+        description="Pista didáctica para facilitar la comprensión",
     )
 
 
 class QuizItem(BaseModel):
-    pregunta: str = Field(
-        ...,
-        min_length=3,
-        description="Pregunta del quiz",
-    )
-
-    opciones: list[str] = Field(
-        ...,
-        min_length=2,
-        description="Opciones disponibles para responder la pregunta",
-    )
-
-    respuesta_correcta: str = Field(
-        ...,
-        min_length=1,
-        description="Respuesta correcta de la pregunta",
-    )
-
-    justificacion: str = Field(
-        ...,
-        min_length=3,
-        description="Explicación de por qué la respuesta indicada es correcta",
-    )
+    pregunta: str = Field(..., min_length=1)
+    opciones: list[str] = Field(..., min_length=2)
+    respuesta_correcta: str = Field(..., min_length=1)
+    justificacion: str = Field(..., min_length=1)
 
 
 class TutorialItem(BaseModel):
-    titulo: str = Field(
-        ...,
-        min_length=3,
-        description="Título del paso o sección del tutorial",
-    )
-
-    explicacion: str = Field(
-        ...,
-        min_length=10,
-        description="Explicación detallada del paso o sección",
-    )
-
-    ejemplo: str | None = Field(
-        default=None,
-        description="Ejemplo opcional relacionado con el paso del tutorial",
-    )
+    paso_numero: int = Field(..., ge=1)
+    titulo_paso: str = Field(..., min_length=1)
+    contenido: str = Field(..., min_length=1)
+    codigo_ejemplo: str | None = None
 
 
 class ResumenItem(BaseModel):
-    titulo: str = Field(
-        ...,
-        min_length=3,
-        description="Título de la sección del resumen ejecutivo",
-    )
-
-    contenido: str = Field(
-        ...,
-        min_length=10,
-        description="Contenido resumido de la sección",
-    )
-
-    puntos_clave: list[str] = Field(
-        ...,
-        min_length=1,
-        description="Principales puntos clave identificados en la sección",
-    )
+    punto_clave: str = Field(..., min_length=1)
+    descripcion: str = Field(..., min_length=1)
+    impacto_negocio: str = Field(..., min_length=1)
 
 
 class GuionItem(BaseModel):
-    seccion: str = Field(
-        ...,
-        min_length=3,
-        description="Nombre de la sección del guion",
-    )
-
-    narracion: str = Field(
-        ...,
-        min_length=10,
-        description="Texto que será narrado o presentado en la sección",
-    )
-
-    indicaciones: str | None = Field(
-        default=None,
-        description="Indicaciones opcionales de apoyo para la presentación o producción",
-    )
+    seccion: str = Field(..., min_length=1)
+    tiempo_estimado_minutos: int = Field(..., ge=1)
+    narracion: str = Field(..., min_length=1)
+    notas_visuales: str | None = None
 
 
 
