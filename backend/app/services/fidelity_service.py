@@ -31,10 +31,9 @@ from typing import Annotated, Any, Literal
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import PromptTemplate
-from pydantic import Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.core.config import settings
-from app.schemas.base import ContractSchema
 from app.schemas.output import ContenidoAdaptadoSchema, EvaluacionCalidadSchema
 from app.services.llm_provider import LLMProvider
 from app.services.retrieval_service import ensamblar_contexto, recuperar_contexto
@@ -48,7 +47,13 @@ _MAX_CARACTERES_CONSULTA = 2000
 _DIRECTORIO_PROMPTS = Path(__file__).parent / "prompts"
 
 
-class AfirmacionVerificadaSchema(ContractSchema):
+class _FidelitySchema(BaseModel):
+    """Base estricta para las salidas internas del verificador de fidelidad."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class AfirmacionVerificadaSchema(_FidelitySchema):
     """Afirmación factual identificada por el verificador y su respaldo documental."""
 
     item: int = Field(..., ge=0)
@@ -56,7 +61,7 @@ class AfirmacionVerificadaSchema(ContractSchema):
     respaldada: bool
 
 
-class VerificacionFidelidadLLMSchema(ContractSchema):
+class VerificacionFidelidadLLMSchema(_FidelitySchema):
     """Salida estructurada interna solicitada al LLM para calcular la evaluación pública."""
 
     afirmaciones: list[AfirmacionVerificadaSchema]
@@ -84,7 +89,7 @@ def _cadenas(valor: Any) -> list[str]:
         return [texto for elemento in valor.values() for texto in _cadenas(elemento)]
     if isinstance(valor, list):
         return [texto for elemento in valor for texto in _cadenas(elemento)]
-    if isinstance(valor, ContractSchema):
+    if isinstance(valor, BaseModel):
         return _cadenas(valor.model_dump(mode="json"))
     return []
 
