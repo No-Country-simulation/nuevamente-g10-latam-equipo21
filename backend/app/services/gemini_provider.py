@@ -7,17 +7,19 @@ de la orquestación (`orchestration_service`) depende solo del Protocol `LLMProv
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TypeVar
 
 import httpx
 from google.genai.errors import APIError
-from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import BaseMessage
-from langchain_core.output_parsers import JsonOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic import BaseModel
 
 from app.core.config import settings
 from app.services.llm_provider import LLMProviderError, LLMTimeoutError
+
+
+SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
 
 class GeminiProvider:
@@ -32,11 +34,7 @@ class GeminiProvider:
         modelo_chat = ChatGoogleGenerativeAI(
             model=model, api_key=api_key, timeout=timeout, max_retries=self._intentos
         )
-        # `response_mime_type` activa el modo JSON de Gemini sin atar la orquestación a un
-        # schema concreto: la validación estricta contra el contrato (NM-07) queda para una
-        # capa posterior que todavía no existe en el repo.
-        self._modelo_json = modelo_chat.bind(response_mime_type="application/json")
-        self._parser = JsonOutputParser()
+        self._modelo_chat = modelo_chat
 
     @classmethod
     def desde_configuracion(cls) -> "GeminiProvider":
@@ -47,18 +45,21 @@ class GeminiProvider:
             timeout=settings.GEMINI_TIMEOUT_SECONDS,
         )
 
-    def generate_json(self, messages: list[BaseMessage]) -> dict[str, Any]:
-        cadena = self._modelo_json | self._parser
+    def generate_structured(
+        self,
+        messages: list[BaseMessage],
+        schema: type[SchemaT],
+    ) -> SchemaT:
         try:
-            return cadena.invoke(messages)
+            modelo_estructurado = self._modelo_chat.with_structured_output(
+                schema,
+                method="json_schema",
+            )
+            resultado = modelo_estructurado.invoke(messages)
         except (TimeoutError, httpx.TimeoutException) as exc:
             raise LLMTimeoutError(
                 f"Gemini no respondió tras {self._intentos} intento(s) de {self._timeout}s "
                 "cada uno (GEMINI_TIMEOUT_SECONDS)."
-            ) from exc
-        except OutputParserException as exc:
-            raise LLMProviderError(
-                f"La respuesta de Gemini no pudo interpretarse como JSON: {exc}"
             ) from exc
         except APIError as exc:
             raise LLMProviderError(f"Gemini devolvió un error de API: {exc}") from exc
@@ -66,3 +67,9 @@ class GeminiProvider:
             # Límite de la capa llm_provider: ningún fallo del SDK subyacente (de red, de
             # autenticación, etc.) debe cruzar sin traducirse a un error tipado propio.
             raise LLMProviderError(f"Fallo inesperado al invocar Gemini: {exc}") from exc
+
+        if not isinstance(resultado, schema):
+            raise LLMProviderError(
+                "Gemini devolvió una respuesta que no coincide con el esquema solicitado."
+            )
+        return resultado

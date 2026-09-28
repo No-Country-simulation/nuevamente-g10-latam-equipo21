@@ -1,6 +1,5 @@
-from typing import Any
-
 from langchain_core.messages import BaseMessage
+from pydantic import BaseModel
 
 from app.services.llm_provider import LLMProvider, LLMProviderError, LLMTimeoutError
 
@@ -8,11 +7,15 @@ from app.services.llm_provider import LLMProvider, LLMProviderError, LLMTimeoutE
 class _ProveedorDeJuguete:
     """Objeto mínimo que cumple el Protocol LLMProvider por duck typing (sin heredar de nada)."""
 
-    def generate_json(self, messages: list[BaseMessage]) -> dict[str, Any]:
-        return {"ok": True}
+    def generate_structured(
+        self,
+        messages: list[BaseMessage],
+        schema: type[BaseModel],
+    ) -> BaseModel:
+        return schema()
 
 
-def test_cualquier_objeto_con_generate_json_satisface_el_protocol():
+def test_cualquier_objeto_con_generate_structured_satisface_el_protocol():
     """
     LLMProvider es un Protocol runtime_checkable: cualquier implementación (Gemini u otra) debe
     poder verificarse contra él sin heredar de una clase base, habilitando el reemplazo de
@@ -21,7 +24,7 @@ def test_cualquier_objeto_con_generate_json_satisface_el_protocol():
     assert isinstance(_ProveedorDeJuguete(), LLMProvider)
 
 
-def test_un_objeto_sin_generate_json_no_satisface_el_protocol():
+def test_un_objeto_sin_generate_structured_no_satisface_el_protocol():
     class _SinMetodoEsperado:
         pass
 

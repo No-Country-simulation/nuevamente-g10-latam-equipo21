@@ -8,9 +8,13 @@ mismo contrato, sin modificar el resto del pipeline (criterio de aceptación de 
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, TypeVar, runtime_checkable
 
 from langchain_core.messages import BaseMessage
+from pydantic import BaseModel
+
+
+SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
 
 class LLMProviderError(Exception):
@@ -25,13 +29,17 @@ class LLMTimeoutError(LLMProviderError):
 class LLMProvider(Protocol):
     """Contrato mínimo que debe cumplir cualquier proveedor de LLM usado por NM-08."""
 
-    def generate_json(self, messages: list[BaseMessage]) -> dict[str, Any]:
+    def generate_structured(
+        self,
+        messages: list[BaseMessage],
+        schema: type[SchemaT],
+    ) -> SchemaT:
         """
-        Envía `messages` al modelo y devuelve la respuesta ya parseada como JSON.
+        Envía `messages` al modelo y devuelve una instancia validada de `schema`.
 
         Implementaciones concretas deben levantar `LLMTimeoutError` ante un timeout y
         `LLMProviderError` ante cualquier otro fallo del proveedor (error de API, respuesta no
-        parseable como JSON, etc.): nunca deben dejar la excepción específica del SDK subyacente
-        propagarse sin traducir, ni dejar la llamada colgada.
+        válida para el esquema, etc.): nunca deben dejar la excepción específica del SDK
+        subyacente propagarse sin traducir, ni dejar la llamada colgada.
         """
         ...

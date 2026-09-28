@@ -1,8 +1,9 @@
-from typing import Literal
+from pydantic import Field
 
-from pydantic import BaseModel, Field
+from app.schemas.base import ContractSchema
 
-class FlashcardItem(BaseModel):
+
+class FlashcardItem(ContractSchema):
     frente: str = Field(
         ...,
         min_length=1,
@@ -22,75 +23,28 @@ class FlashcardItem(BaseModel):
     )
 
 
-class QuizItem(BaseModel):
+class QuizItem(ContractSchema):
     pregunta: str = Field(..., min_length=1)
-    opciones: list[str] = Field(..., min_length=2)
+    opciones: list[str] = Field(..., min_length=4, max_length=4)
     respuesta_correcta: str = Field(..., min_length=1)
     justificacion: str = Field(..., min_length=1)
 
 
-class TutorialItem(BaseModel):
+class TutorialItem(ContractSchema):
     paso_numero: int = Field(..., ge=1)
     titulo_paso: str = Field(..., min_length=1)
     contenido: str = Field(..., min_length=1)
-    codigo_ejemplo: str | None = None
+    codigo_ejemplo: str | None
 
 
-class ResumenItem(BaseModel):
+class ResumenItem(ContractSchema):
     punto_clave: str = Field(..., min_length=1)
     descripcion: str = Field(..., min_length=1)
     impacto_negocio: str = Field(..., min_length=1)
 
 
-class GuionItem(BaseModel):
+class GuionItem(ContractSchema):
     seccion: str = Field(..., min_length=1)
     tiempo_estimado_minutos: int = Field(..., ge=1)
     narracion: str = Field(..., min_length=1)
-    notas_visuales: str | None = None
-
-
-
-
-class FlashcardsContent(BaseModel):
-    formato_salida: Literal["Flashcards"] = "Flashcards"
-    items: list[FlashcardItem] = Field(
-        ...,
-        min_length=1,
-        description="Lista de flashcards generadas",
-    )
-
-
-class QuizContent(BaseModel):
-    formato_salida: Literal["Quiz"] = "Quiz"
-    items: list[QuizItem] = Field(
-        ...,
-        min_length=1,
-        description="Lista de preguntas del quiz",
-    )
-
-
-class TutorialContent(BaseModel):
-    formato_salida: Literal["Tutorial"] = "Tutorial"
-    items: list[TutorialItem] = Field(
-        ...,
-        min_length=1,
-        description="Pasos o secciones del tutorial",
-    )
-
-
-class ResumenContent(BaseModel):
-    formato_salida: Literal["Resumen Ejecutivo"] = "Resumen Ejecutivo"
-    items: list[ResumenItem] = Field(
-        ...,
-        min_length=1,
-        description="Secciones del resumen ejecutivo",
-    )
-
-
-class GuionContent(BaseModel):
-    formato_salida: Literal["Guion"] = "Guion"
-    items: list[GuionItem] = Field(
-        ...,
-        min_length=1,
-        description="Secciones del guion generado",
-    )
+    notas_visuales: str = Field(..., min_length=1)
