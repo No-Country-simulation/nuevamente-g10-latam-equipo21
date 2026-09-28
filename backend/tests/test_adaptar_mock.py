@@ -14,12 +14,15 @@ PAYLOAD_BASE = {
     "nivel_detalle": "Didactico",
 }
 
-FORMATOS_Y_TIPO_ITEM = {
-    "Flashcards": "flashcard",
-    "Quiz": "quiz",
-    "Tutorial": "tutorial",
-    "Resumen_Ejecutivo": "resumen",
-    "Guion_Clase": "guion",
+# Campos esperados por item según formato_salida, tomados de app.schemas.content.
+# tipo_item no forma parte del contrato final: ContenidoAdaptadoSchema.items es
+# una Union simple de *Item, sin discriminador.
+FORMATOS_Y_CAMPOS_ITEM = {
+    "Flashcards": {"frente", "dorso", "pista_didactica"},
+    "Quiz": {"pregunta", "opciones", "respuesta_correcta", "justificacion"},
+    "Tutorial": {"paso_numero", "titulo_paso", "contenido", "codigo_ejemplo"},
+    "Resumen_Ejecutivo": {"punto_clave", "descripcion", "impacto_negocio"},
+    "Guion_Clase": {"seccion", "tiempo_estimado_minutos", "narracion", "notas_visuales"},
 }
 
 ENDPOINT = f"{settings.API_V1_STR}/adaptar-contenido"
@@ -33,8 +36,8 @@ def _activar_mock(monkeypatch):
     monkeypatch.setattr(settings, "USE_MOCK_LLM", True)
 
 
-@pytest.mark.parametrize("formato,tipo_item_esperado", FORMATOS_Y_TIPO_ITEM.items())
-def test_responde_estructura_completa_por_formato(formato, tipo_item_esperado):
+@pytest.mark.parametrize("formato,campos_item_esperados", FORMATOS_Y_CAMPOS_ITEM.items())
+def test_responde_estructura_completa_por_formato(formato, campos_item_esperados):
     payload = {**PAYLOAD_BASE, "formato_salida": formato}
     resp = client.post(ENDPOINT, json=payload)
 
@@ -50,11 +53,22 @@ def test_responde_estructura_completa_por_formato(formato, tipo_item_esperado):
         "almacenamiento_oci",
     }
     assert data["metadatos"]["formato_generado"] == formato
+    assert data["metadatos"]["perfil_aplicado"] == PAYLOAD_BASE["perfil_destinatario"]
+
     assert data["almacenamiento_oci"]["bucket"] == settings.OCI_BUCKET_NAME
+    assert data["almacenamiento_oci"]["status_upload"] == "completado"
+
+    assert 0 <= data["evaluacion_calidad"]["anclaje_fuente_score"] <= 1
+    assert data["evaluacion_calidad"]["claridad_pedagogica"] in {"Alta", "Media", "Baja"}
+
+    assert data["contenido_adaptado"]["titulo"]
+    assert data["contenido_adaptado"]["introduccion_contextualizada"]
 
     items = data["contenido_adaptado"]["items"]
     assert len(items) >= 1
-    assert all(item["tipo_item"] == tipo_item_esperado for item in items)
+    for item in items:
+        assert campos_item_esperados <= set(item.keys())
+        assert "tipo_item" not in item
 
 
 def test_entrada_invalida_devuelve_shape_de_error_del_contrato():
