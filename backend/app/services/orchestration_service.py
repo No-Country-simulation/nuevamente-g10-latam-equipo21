@@ -11,13 +11,46 @@ por parámetro, lo que permite reemplazar el proveedor sin modificar esta funci�
 
 from __future__ import annotations
 
-from app.schemas.output import ContenidoAdaptadoSchema, indices_items_incompatibles
+from pydantic import BaseModel
+
+from app.schemas.content import (
+    FlashcardItem,
+    GuionItem,
+    QuizItem,
+    ResumenItem,
+    TutorialItem,
+)
+from app.schemas.enums import FormatoSalida
+from app.schemas.output import ContenidoAdaptadoSchema
 from app.services.llm_provider import LLMProvider
 from app.services.prompt_builder import construir_mensajes_adaptacion
 
 
 class ContenidoAdaptadoInvalidoError(ValueError):
     """El contenido validó estructuralmente, pero no corresponde al formato solicitado."""
+
+
+TIPO_ITEM_POR_FORMATO: dict[FormatoSalida, type[BaseModel]] = {
+    FormatoSalida.TUTORIAL: TutorialItem,
+    FormatoSalida.FLASHCARDS: FlashcardItem,
+    FormatoSalida.QUIZ: QuizItem,
+    FormatoSalida.RESUMEN_EJECUTIVO: ResumenItem,
+    FormatoSalida.GUION_CLASE: GuionItem,
+}
+
+
+def _indices_items_incompatibles(
+    formato_salida: FormatoSalida | str,
+    items: list[BaseModel],
+) -> list[int]:
+    """Devuelve las posiciones cuyos items no corresponden al formato solicitado."""
+    formato = FormatoSalida(formato_salida)
+    tipo_esperado = TIPO_ITEM_POR_FORMATO[formato]
+    return [
+        indice
+        for indice, item in enumerate(items)
+        if not isinstance(item, tipo_esperado)
+    ]
 
 
 def generar_contenido_adaptado(
@@ -53,7 +86,7 @@ def generar_contenido_adaptado(
     )
     resultado = llm_provider.generate_structured(mensajes, ContenidoAdaptadoSchema)
 
-    indices_invalidos = indices_items_incompatibles(formato_salida, resultado.items)
+    indices_invalidos = _indices_items_incompatibles(formato_salida, resultado.items)
     if indices_invalidos:
         raise ContenidoAdaptadoInvalidoError(
             f"Los items en las posiciones {indices_invalidos} no corresponden "
