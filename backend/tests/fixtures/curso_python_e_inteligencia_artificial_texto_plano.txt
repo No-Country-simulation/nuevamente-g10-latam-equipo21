@@ -1,0 +1,56 @@
+======================================================================
+CURSO INTENSIVO: PYTHON E INTELIGENCIA ARTIFICIAL
+======================================================================
+Nivel: Intermedio | Duración: 4 Semanas | Modalidad: Práctica
+
+1. INTRODUCCIÓN AL ECOSISTEMA PYTHON PARA IA
+Python se ha consolidado como el lenguaje estándar de la industria para la 
+Inteligencia Artificial y el Aprendizaje Automático debido a su sintaxis 
+clara, versatilidad y una enorme colección de librerías especializadas.
+
+- NumPy y Pandas: Fundamentales para el manejo eficiente de vectores, 
+  matrices y estructuras de datos tabulares a gran escala.
+- Scikit-Learn: La librería insignia para Machine Learning clásico.
+
+2. MANIPULACIÓN Y PREPROCESAMIENTO DE DATOS
+El éxito de cualquier modelo de IA depende de la calidad de sus datos. 
+Este módulo cubre las técnicas esenciales para preparar la información:
+- Limpieza de datos: Tratamiento de valores nulos, duplicados y anomalías.
+- Normalización y Escalamiento: Estandarización de variables.
+- Codificación de Variables Categóricas: Transformación de texto a números.
+
+3. MACHINE LEARNING SUPERVISADO Y NO SUPERVISADO
+Implementación práctica de algoritmos predictivos utilizando librerías:
+
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+modelo = RandomForestClassifier(n_estimators=100)
+modelo.fit(X_train, y_train)
+precision = modelo.score(X_test, y_test)
+print(f"Precisión del modelo: {precision * 100:.2f}%")
+
+----------------------------------------------------------------------
+4. INTRODUCCIÓN AL DEEP LEARNING CON PYTORCH
+El aprendizaje profundo permite resolver problemas complejos de visión 
+por computadora y procesamiento de lenguaje natural.
+
+- Redes Convolucionales (CNN): Procesamiento y clasificación de imágenes.
+- Redes Recurrentes (RNN/LSTM): Análisis de secuencias y texto.
+- Transformers y LLMs: Modelos avanzados de lenguaje y generación.
+
+5. CREACIÓN DE APLICACIONES CON IA GENERATIVA
+Integra modelos de lenguaje avanzados y APIs de IA en aplicaciones reales:
+- Consumo de APIs: Conexión con proveedores mediante peticiones seguras.
+- Ingeniería de Prompts: Diseño de instrucciones estructuradas.
+- RAG: Conexión de bases de datos vectoriales con modelos de lenguaje.
+
+6. PROYECTO FINAL INTEGRADOR
+Los estudiantes desarrollarán un sistema inteligente completo, desde la 
+recolección de datos hasta el despliegue del modelo con Streamlit.
+
+CERTIFICACIÓN:
+La aprobación requiere la entrega del código en GitHub y la defensa 
+técnica del proyecto integrador ante un panel de instructores.
+======================================================================

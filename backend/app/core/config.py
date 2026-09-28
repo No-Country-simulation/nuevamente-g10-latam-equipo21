@@ -49,16 +49,22 @@ class Settings(BaseSettings):
     # Configuración de Google Gemini
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL_NAME: str = "gemini-1.5-flash"
+    GEMINI_EMBEDDING_MODEL_NAME: str = "gemini-embedding-001"
 
     # Vector Store (ChromaDB)
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"
+
+    # Recuperación semántica (NM-06)
+    RETRIEVAL_TOP_K: int = 5
+    RETRIEVAL_SCORE_THRESHOLD: float = 0.35
+    RETRIEVAL_MAX_CONTEXT_TOKENS: int = 2000
 
     # Oracle Cloud Infrastructure (OCI Object Storage)
     OCI_CONFIG_FILE: str = "~/.oci/config"
     OCI_PROFILE: str = "DEFAULT"
     OCI_NAMESPACE: str = ""
     OCI_BUCKET_NAME: str = "nuevamente-contenidos-educativos"
-    OCI_REGION: str = "us-ashburn-1"
+    OCI_REGION: str = "sa-saopaulo-1"
 
 
 settings = Settings()
