@@ -4,6 +4,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.errors import register_exception_handlers
+from app.core.request_context import RequestIdMiddleware
 
 
 def create_app() -> FastAPI:
@@ -14,7 +16,7 @@ def create_app() -> FastAPI:
         docs_url=f"{settings.API_V1_STR}/docs",
         redoc_url=f"{settings.API_V1_STR}/redoc",
     )
-
+    application.add_middleware(RequestIdMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS if isinstance(settings.CORS_ORIGINS, list) else ["*"],
@@ -24,6 +26,7 @@ def create_app() -> FastAPI:
     )
 
     application.include_router(api_router, prefix=settings.API_V1_STR)
+    register_exception_handlers(application)
 
     @application.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
