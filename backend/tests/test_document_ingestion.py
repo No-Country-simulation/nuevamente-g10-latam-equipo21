@@ -14,7 +14,7 @@ from app.services.document_ingestion import (
 
 def test_extracts_and_normalizes_markdown(tmp_path: Path):
     source = tmp_path / "guide.md"
-    source.write_text("# Título  \r\n\r\nContenido.   \r\n", encoding="utf-8")
+    source.write_bytes("# Título  \r\n\r\nContenido.   \r\n".encode("utf-8"))
 
     document = extract_document(source)
 
