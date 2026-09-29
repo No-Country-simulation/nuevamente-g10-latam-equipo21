@@ -1,9 +1,31 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.schemas.output import AlmacenamientoOCISchema
+from app.services.oci_storage_service import get_oci_storage_service_factory
 
 
 client = TestClient(app)
+
+
+class FakeStorageService:
+    def upload_original(self, *, filename, content, content_type):
+        assert filename == "lesson.md"
+        assert content == b"# Lesson\r\n\r\nContent.  "
+        assert content_type == "text/markdown"
+        return AlmacenamientoOCISchema(
+            bucket="test-bucket",
+            objeto_id="originales/test-lesson.md",
+            status_upload="completado",
+        )
+
+
+@pytest.fixture(autouse=True)
+def _override_storage_service():
+    app.dependency_overrides[get_oci_storage_service_factory] = lambda: FakeStorageService
+    yield
+    app.dependency_overrides.pop(get_oci_storage_service_factory, None)
 
 
 def test_extract_document_endpoint_returns_text_and_metadata():
