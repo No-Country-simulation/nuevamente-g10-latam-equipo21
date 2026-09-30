@@ -119,6 +119,7 @@ La suite específica de NM-D1 valida:
 - retorno del Crítico al Redactor cuando el score es bajo;
 - límite máximo de iteraciones;
 - transferencia de observaciones del Crítico al siguiente intento;
+- transferencia del contenido anterior completo al Redactor durante una revisión;
 - mejora de score en un escenario controlado;
 - mantenimiento del contrato público definido por NM-07.
 
@@ -142,6 +143,24 @@ Desde `backend`:
 
 ```powershell
 python -m scripts.comparar_nm_d1
+```
+
+El script:
+
+1. extrae las páginas del documento;
+2. genera los chunks;
+3. indexa el documento en ChromaDB;
+4. ejecuta el flujo anterior NM-08 + NM-09;
+5. ejecuta el flujo multi-agente NM-D1;
+6. imprime los scores de anclaje, claridad e iteraciones.
+
+Actualmente el documento utilizado es provisional:
+
+`tests/fixtures/Curso Python e Inteligencia Artificial.pdf`
+
+Cuando NM-17 defina el documento oficial de demo, deben actualizarse
+`DOCUMENT_PATH`, `DOCUMENT_ID` y `DOCUMENT_TITLE` en
+`scripts/comparar_nm_d1.py`.
 
 ## Integración con el flujo productivo
 
@@ -160,8 +179,9 @@ un mecanismo de revisión iterativa sin afectar las respuestas que ya
 alcanzan el nivel de fidelidad configurado.
 
 Cuando el contenido no supera el umbral, LangGraph permite que el
-Agente Crítico devuelva observaciones al Redactor y controle una nueva
-iteración hasta alcanzar el límite configurado.
+Agente Crítico devuelva observaciones al Redactor junto con la versión
+anterior del contenido y controle una nueva iteración hasta alcanzar el
+límite configurado.
 
 El documento utilizado en esta comparación es provisional y será
 reemplazado por el documento oficial de NM-17 cuando el equipo lo
