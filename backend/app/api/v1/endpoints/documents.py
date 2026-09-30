@@ -1,9 +1,11 @@
+import logging
 from dataclasses import asdict, replace
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 
 from app.services.document_ingestion import (
     DocumentExtractionError,
@@ -16,6 +18,7 @@ from app.services.oci_storage_service import (
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -45,11 +48,21 @@ async def extract_document_endpoint(
             document.metadata,
             filename=file.filename or temporary_path.name,
         )
-        storage_service_factory().upload_original(
-            filename=metadata.filename,
-            content=content,
-            content_type=file.content_type,
-        )
+
+        def persist_original() -> None:
+            storage_service_factory().upload_original(
+                filename=metadata.filename,
+                content=content,
+                content_type=file.content_type,
+            )
+
+        try:
+            await run_in_threadpool(persist_original)
+        except Exception as error:
+            logger.warning(
+                "No se pudo persistir el documento original en OCI (%s); se continúa.",
+                type(error).__name__,
+            )
         return {
             "text": document.text,
             "metadata": asdict(metadata),
