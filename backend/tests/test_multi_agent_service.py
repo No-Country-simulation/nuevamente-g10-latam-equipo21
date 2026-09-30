@@ -295,9 +295,25 @@ def test_segundo_intento_recibe_feedback_del_critico():
     )
 
     assert (
-        "corrigiendo específicamente"
+        "aplicando específicamente"
         in segundo_intento
     )
+
+    assert (
+        "Versión 1 del contenido."
+        not in primer_intento
+    )
+
+    assert (
+        "Versión 1 del contenido."
+        in segundo_intento
+    )
+
+    assert (
+        "Contenido anterior completo:"
+        in segundo_intento
+    )
+
 
 def test_multiagente_mantiene_contrato_publico_nm07():
     store = VectorStoreFake()

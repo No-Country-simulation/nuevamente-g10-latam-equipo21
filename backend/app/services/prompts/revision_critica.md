@@ -1,9 +1,13 @@
 El contenido anterior fue revisado por el Agente Crítico.
 
+Contenido anterior completo:
+{contenido_anterior}
+
 Feedback de la revisión:
 {feedback_critico}
 
-Generá nuevamente el contenido corrigiendo específicamente los problemas señalados.
+Generá una versión completa corregida del contenido anterior,
+aplicando específicamente las observaciones del Agente Crítico.
 
 Mantené:
 - el mismo formato solicitado;
@@ -12,4 +16,7 @@ Mantené:
 - el mismo nivel de detalle;
 - el contenido estrictamente respaldado por el contexto recuperado.
 
-No menciones al usuario que estás realizando una segunda versión ni que hubo una revisión anterior.
+La respuesta debe ser una versión completa, no un parche ni una lista de cambios.
+
+No menciones al usuario que estás realizando una segunda versión
+ni que hubo una revisión anterior.

@@ -135,6 +135,7 @@ def crear_grafo_multiagente(
             nivel_detalle=state["nivel_detalle"],
             llm_provider=llm_provider,
             feedback_critico=state.get("feedback_critico"),
+            contenido_anterior=state.get("contenido_adaptado"),
         )
 
         return {

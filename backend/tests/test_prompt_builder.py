@@ -70,19 +70,25 @@ def test_valor_desconocido_en_un_eje_falla_explicitamente():
     with pytest.raises(KeyError):
         _construir(perfil_destinatario="Perfil_Inexistente")
 
-def test_feedback_critico_agrega_mensaje_de_revision():
+def test_feedback_critico_agrega_contenido_anterior_y_mensaje_de_revision():
     feedback = (
         "El item 2 contiene una afirmación "
         "no respaldada por el documento."
     )
 
+    contenido_anterior = (
+        '{"titulo":"Versión anterior",'
+        '"introduccion_contextualizada":"Contenido previo",'
+        '"items":[]}'
+    )
+
     mensajes = _construir(
-        feedback_critico=feedback
+        feedback_critico=feedback,
+        contenido_anterior_serializado=contenido_anterior,
     )
 
     assert len(mensajes) == 3
     assert mensajes[2].type == "human"
+    assert contenido_anterior in mensajes[2].content
     assert feedback in mensajes[2].content
-    assert "corrigiendo específicamente" in (
-        mensajes[2].content
-    )
+    assert "versión completa corregida" in mensajes[2].content

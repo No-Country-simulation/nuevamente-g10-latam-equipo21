@@ -126,6 +126,33 @@ Estado al momento de esta comparación:
 
 `108 passed`
 
+## Cómo ejecutar la comparativa
+
+La comparativa debe ejecutarse desde el directorio `backend`.
+
+Prerrequisitos:
+
+- Python 3.11.
+- Entorno virtual activado.
+- Dependencias instaladas con `pip install -r requirements.txt`.
+- `GEMINI_API_KEY` configurada en `backend/.env`.
+- Documento de prueba disponible en la ruta configurada dentro del script.
+
+Desde `backend`:
+
+```powershell
+python -m scripts.comparar_nm_d1
+
+## Integración con el flujo productivo
+
+NM-D1 implementa y valida la orquestación multi-agente como servicio
+independiente.
+
+La conexión del grafo con el endpoint y la pipeline integral corresponde
+al trabajo de NM-12. Por este motivo, en este ticket el grafo es consumido
+por los tests automatizados y por el script de comparación, sin modificar
+todavía el contrato ni el endpoint público.
+
 ## Conclusión
 
 El refactor multi-agente mantiene el contrato público existente y agrega
