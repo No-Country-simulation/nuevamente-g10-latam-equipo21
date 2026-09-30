@@ -4,8 +4,8 @@ Cableados contra código real:
 - ContextoRealAdapter  -> NM-05 (chunk_pages, ChromaStore) + NM-06 (recuperar_contexto,
   ensamblar_contexto, ChromaVectorStore), ya en develop.
 - GeneradorRealAdapter -> NM-08 (generar_contenido_adaptado, GeminiProvider) y
-- VerificadorRealAdapter -> NM-09 (evaluar_fidelidad), que viven aún en sus ramas:
-  se importan de forma perezosa para no romper develop.
+- VerificadorRealAdapter -> NM-09 (evaluar_fidelidad), con import perezoso:
+  así el modo mock no carga el SDK de Gemini.
 
 PENDIENTES (levantan PipelineNoConfiguradaError -> HTTP 501):
 - MetadatosRealAdapter (NM-10).
@@ -107,7 +107,7 @@ def _llm_provider_compartido():
 
 
 class GeneradorRealAdapter:
-    """NM-08. Import perezoso: el módulo aún no está en develop."""
+    """NM-08. Import perezoso: evita cargar el SDK de Gemini en modo mock."""
 
     def __init__(self, llm_provider=None, generar=None) -> None:
         self._llm = llm_provider
@@ -140,7 +140,7 @@ class _SinCablear:
 class VerificadorRealAdapter:
     """NM-09. evaluar_fidelidad hace su propio retrieval por unidad de contenido:
     necesita el documento_id (mismo hash que usó el indexado) y el vector store
-    del adaptador de contexto. Import perezoso: aún no está en develop."""
+    del adaptador de contexto. Import perezoso: evita cargar el SDK de Gemini en modo mock."""
 
     def __init__(self, contexto_adapter, llm_provider=None, evaluar=None) -> None:
         self._contexto = contexto_adapter
