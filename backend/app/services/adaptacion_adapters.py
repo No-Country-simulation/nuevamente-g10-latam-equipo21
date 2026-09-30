@@ -160,11 +160,27 @@ class VerificadorRealAdapter:
             llm_provider=self._llm,
             perfil_destinatario=payload.perfil_destinatario.value,
         )
+        
+class MetadatosRealAdapter:
+    """NM-10. Conceptos clave, prerrequisitos y tiempo estimado de estudio."""
 
+    def __init__(self, llm_provider=None, generar=None) -> None:
+        self._llm = llm_provider
+        self._generar = generar
 
-class MetadatosRealAdapter(_SinCablear):         # NM-10 (sin tomar)
     def generar(self, payload, contenido):
-        self._no()
+        if self._generar is None:
+            from app.services.metadata_service import generar_metadatos_aprendizaje
+            self._generar = generar_metadatos_aprendizaje
+        if self._llm is None:
+            self._llm = _llm_provider_compartido()
+        return self._generar(
+            documento_contenido=payload.documento_contenido,
+            contenido_adaptado=contenido,
+            perfil_destinatario=payload.perfil_destinatario,
+            formato_salida=payload.formato_salida,
+            llm_provider=self._llm,
+        )
 
 
 class StorageNoDisponible:                       # NM-11 (sin tomar)

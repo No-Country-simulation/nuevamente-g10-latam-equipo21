@@ -86,7 +86,19 @@ def test_mock_se_apaga_por_variable_de_entorno(monkeypatch):
     monkeypatch.setattr(settings, "USE_MOCK_LLM", False)
     payload = {**PAYLOAD_BASE, "formato_salida": "Flashcards"}
 
+    from app.services.mock_adaptacion_service import construir_respuesta_mock
+
+    llamados = []
+
+    class ServicioRealFalso:
+        def adaptar(self, payload_):
+            llamados.append(payload_)
+            return construir_respuesta_mock(payload_)
+
+    monkeypatch.setattr(
+        "app.services.dependencies.construir_servicio_real", lambda: ServicioRealFalso()
+    )
     resp = client.post(ENDPOINT, json=payload)
 
-    # El endpoint real (NM-12) todavía no existe: se espera 501, no un mock.
-    assert resp.status_code == 501
+    # Con USE_MOCK_LLM=false el endpoint delega en el servicio real, no en el mock.
+    assert resp.status_code == 200 and len(llamados) == 1
