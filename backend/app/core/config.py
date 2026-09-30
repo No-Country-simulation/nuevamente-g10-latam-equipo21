@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     # Verificación de fidelidad (NM-09)
     FIDELITY_SCORE_THRESHOLD: float = 0.7
 
+    # Orquestación multi-agente con LangGraph (NM-D1)
+    MULTI_AGENT_MAX_ITERATIONS: int = 3
+
     # Oracle Cloud Infrastructure (OCI Object Storage)
     OCI_CONFIG_FILE: str = "~/.oci/config"
     OCI_PROFILE: str = "DEFAULT"

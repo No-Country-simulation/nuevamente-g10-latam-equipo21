@@ -62,6 +62,7 @@ def generar_contenido_adaptado(
     nicho_sector: str,
     nivel_detalle: str,
     llm_provider: LLMProvider,
+    feedback_critico: str | None = None,
 ) -> ContenidoAdaptadoSchema:
     """
     Genera el contenido adaptado para un documento, anclado al contexto recuperado.
@@ -83,6 +84,7 @@ def generar_contenido_adaptado(
         formato_salida=formato_salida,
         nicho_sector=nicho_sector,
         nivel_detalle=nivel_detalle,
+        feedback_critico=feedback_critico,
     )
     resultado = llm_provider.generate_structured(mensajes, ContenidoAdaptadoSchema)
 
