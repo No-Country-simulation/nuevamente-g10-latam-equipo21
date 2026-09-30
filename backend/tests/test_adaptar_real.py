@@ -153,8 +153,20 @@ def test_flag_mock_y_501_sin_cablear(monkeypatch):
     r = c.post(URL, json=PAYLOAD)
     assert r.status_code == 200 and "MOCK" in r.json()["evaluacion_calidad"]["observaciones"]
     monkeypatch.setattr(settings, "USE_MOCK_LLM", False)
+    from app.services.mock_adaptacion_service import construir_respuesta_mock
+
+    llamados = []
+
+    class ServicioRealFalso:
+        def adaptar(self, payload_):
+            llamados.append(payload_)
+            return construir_respuesta_mock(payload_)
+
+    monkeypatch.setattr(
+        "app.services.dependencies.construir_servicio_real", lambda: ServicioRealFalso()
+    )
     r = c.post(URL, json=PAYLOAD)
-    assert r.status_code == 501 and r.json()["error"]["codigo"] == "PIPELINE_NO_CONFIGURADA"
+    assert r.status_code == 200 and len(llamados) == 1  # con el flag en False se usa el servicio real
 
 
 # --- ContextoRealAdapter con fakes de NM-05/06 ---
