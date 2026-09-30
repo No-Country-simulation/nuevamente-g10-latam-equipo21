@@ -81,7 +81,8 @@ def _extract_pdf(path: Path) -> tuple[str, int]:
 
 
 def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig")
+    with path.open(encoding="utf-8-sig", newline="") as file:
+        return file.read()
 
 
 def _normalize_text(text: str) -> str:

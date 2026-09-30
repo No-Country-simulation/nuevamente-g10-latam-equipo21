@@ -48,8 +48,9 @@ class Settings(BaseSettings):
 
     # Configuración de Google Gemini
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL_NAME: str = "gemini-1.5-flash"
+    GEMINI_MODEL_NAME: str = "gemini-3.8-flash"
     GEMINI_EMBEDDING_MODEL_NAME: str = "gemini-embedding-001"
+    GEMINI_TIMEOUT_SECONDS: float = 30.0
 
     # Vector Store (ChromaDB)
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"
@@ -58,6 +59,9 @@ class Settings(BaseSettings):
     RETRIEVAL_TOP_K: int = 5
     RETRIEVAL_SCORE_THRESHOLD: float = 0.35
     RETRIEVAL_MAX_CONTEXT_TOKENS: int = 2000
+
+    # Verificación de fidelidad (NM-09)
+    FIDELITY_SCORE_THRESHOLD: float = 0.7
 
     # Oracle Cloud Infrastructure (OCI Object Storage)
     OCI_CONFIG_FILE: str = "~/.oci/config"
