@@ -35,6 +35,7 @@ class MetadatosSchema(BaseModel):
         ...,
         min_length=1,
     )
+    prerrequisitos: list[str] = Field(default_factory=list)
 
 
 class ContenidoAdaptadoSchema(BaseModel):
