@@ -1,11 +1,15 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import register_exception_handlers
-from app.core.request_context import RequestIdMiddleware
+from app.core.request_context import RequestIdMiddleware, get_request_id
+
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -34,6 +38,21 @@ def create_app() -> FastAPI:
         primer_error = errores[0] if errores else {}
         campo = ".".join(str(p) for p in primer_error.get("loc", []) if p != "body")
 
+        # Se registra solo la ubicación y el tipo de cada error. Nunca `input`
+        # ni `msg`: el body incluye `documento_contenido`, que puede ser grande
+        # o sensible.
+        resumen = [
+            {
+                "campo": ".".join(str(p) for p in e.get("loc", []) if p != "body"),
+                "tipo": e.get("type", "desconocido"),
+            }
+            for e in errores
+        ]
+        logger.warning(
+            "[%s] validación 422 en %s %s: %s",
+            get_request_id(), request.method, request.url.path, resumen,
+        )
+
         return JSONResponse(
             status_code=422,
             content={
@@ -48,6 +67,11 @@ def create_app() -> FastAPI:
                 },
             },
         )
+
+    @application.get("/docs", include_in_schema=False)
+    async def docs_redirect() -> RedirectResponse:
+        """Atajo: el ticket pide Swagger en /docs; la UI real vive bajo el prefijo versionado."""
+        return RedirectResponse(url=f"{settings.API_V1_STR}/docs")
 
     @application.get("/", tags=["Root"], summary="Raíz informativa de la API")
     async def root():

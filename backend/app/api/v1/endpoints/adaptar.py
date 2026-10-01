@@ -19,11 +19,49 @@ _EJEMPLO_REQUEST = {
     "nivel_detalle": "Didactico",
 }
 
+# Valores ilustrativos: lo que importa es la forma, y un test verifica que
+# cumple el contrato (OutputSchema) para que no se desactualice.
+_EJEMPLO_RESPUESTA_200 = {
+    "status": "exito",
+    "metadatos": {
+        "perfil_aplicado": "Principiante",
+        "formato_generado": "Flashcards",
+        "tiempo_estimado_estudio_minutos": 5,
+        "conceptos_clave": ["VCN", "Subredes", "Internet Gateway"],
+        "prerrequisitos": [],
+    },
+    "contenido_adaptado": {
+        "titulo": "Dominando Redes en la Nube desde Cero",
+        "introduccion_contextualizada": "Una VCN es tu red privada dentro de OCI...",
+        "items": [
+            {
+                "frente": "¿Qué es una VCN?",
+                "dorso": "Una red privada y personalizable en Oracle Cloud Infrastructure.",
+                "pista_didactica": "Pensá en tu propia red de oficina, pero en la nube.",
+            }
+        ],
+    },
+    "evaluacion_calidad": {
+        "anclaje_fuente_score": 0.9,
+        "claridad_pedagogica": "Alta",
+        "observaciones": "Contenido respaldado por el documento fuente.",
+    },
+    "almacenamiento_oci": {
+        "bucket": "nuevamente-contenidos-educativos",
+        "objeto_id": "contenido-ejemplo.json",
+        "status_upload": "completado",
+    },
+}
+
 
 @router.post(
     "/adaptar-contenido",
     response_model=OutputSchema,
     responses={
+        200: {
+            "description": "Paquete educativo generado, validado y persistido.",
+            "content": {"application/json": {"example": _EJEMPLO_RESPUESTA_200}},
+        },
         422: {
             "description": "Entrada inválida (campo faltante o valor fuera de enum; el mensaje lista los valores válidos).",
             "content": _EJEMPLO_ERROR("ENTRADA_INVALIDA", "Campo 'perfil_destinatario': Input should be 'Principiante', ..."),
