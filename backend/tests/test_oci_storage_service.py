@@ -108,6 +108,28 @@ def test_upload_failure_preserves_generated_content_and_reports_error(caplog):
     assert result.contenido_adaptado == response.contenido_adaptado
     assert result.almacenamiento_oci.status_upload == "error"
     assert "secret must not be logged" not in caplog.text
+    
+    
+def test_upload_failure_logs_request_id_without_exposing_error_message(
+    caplog, monkeypatch
+):
+    monkeypatch.setattr(
+        "app.services.oci_storage_service.get_request_id",
+        lambda: "req-test-123",
+    )
+    client = RecordingObjectStorageClient(error=RuntimeError("secret must not be logged"))
+    service = OCIStorageService(client, namespace="test-namespace", bucket_name="test-bucket")
+
+    result = service.upload_original(
+        filename="lesson.md",
+        content=b"original bytes",
+        content_type="text/markdown",
+    )
+
+    assert result.status_upload == "error"
+    assert "req-test-123" in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert "secret must not be logged" not in caplog.text
 
 
 def test_client_uses_instance_principal_without_static_credentials(monkeypatch):
