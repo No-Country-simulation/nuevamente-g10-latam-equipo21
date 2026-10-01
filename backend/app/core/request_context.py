@@ -12,6 +12,10 @@ _request_id: ContextVar[str] = ContextVar("request_id", default="-")
 def get_request_id() -> str:
     return _request_id.get()
 
+def request_id_de(request) -> str:
+    """Request ID para handlers que corren fuera del middleware (p. ej. el de 500)."""
+    return getattr(request.state, "request_id", None) or get_request_id()
+
 
 class RequestIdMiddleware:
     """Asigna un id por petición (o reutiliza el X-Request-ID entrante) y lo
@@ -28,6 +32,7 @@ class RequestIdMiddleware:
         incoming = dict(scope.get("headers") or []).get(REQUEST_ID_HEADER.lower().encode())
         rid = incoming.decode()[:64] if incoming else uuid.uuid4().hex
         token = _request_id.set(rid)
+        scope.setdefault("state", {})["request_id"] = rid
 
         async def send_with_header(message: Message) -> None:
             if message["type"] == "http.response.start":

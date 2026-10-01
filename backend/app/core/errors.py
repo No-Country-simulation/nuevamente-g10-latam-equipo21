@@ -11,7 +11,8 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.core.request_context import get_request_id
+from app.core.request_context import get_request_id, request_id_de
+from app.core.log_sanitizer import error_sanitizado
 
 logger = logging.getLogger("nuevamente.errors")
 
@@ -60,21 +61,23 @@ class PipelineNoConfiguradaError(AppError):
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(request: Request, exc: AppError) -> JSONResponse:
+        causa = exc.__cause__ or exc.__context__
         logger.error(
-            "[%s] %s (%s) en %s %s | causa: %r",
-            get_request_id(), exc.codigo, exc.status_code,
-            request.method, request.url.path, exc.__cause__,
-            exc_info=exc,
+            "[%s] %s (%s) en %s %s | causa: %s",
+            request_id_de(request), exc.codigo, exc.status_code,
+            request.method, request.url.path,
+            error_sanitizado(causa) if causa else "n/a",
         )
         return JSONResponse(status_code=exc.status_code, content=error_body(exc.codigo, exc.mensaje))
 
     @app.exception_handler(Exception)
     async def _unexpected(request: Request, exc: Exception) -> JSONResponse:
         logger.error(
-            "[%s] ERROR_INTERNO no controlado en %s %s",
-            get_request_id(), request.method, request.url.path, exc_info=exc,
+            "[%s] ERROR_INTERNO no controlado en %s %s | %s",
+            request_id_de(request), request.method, request.url.path,
+            error_sanitizado(exc),
         )
         return JSONResponse(
             status_code=500,
             content=error_body(AppError.codigo, AppError.mensaje),
-        )
+        )        

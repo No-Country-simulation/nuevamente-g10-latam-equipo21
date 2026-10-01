@@ -20,6 +20,7 @@ from typing import Protocol
 from app.core.config import settings
 from app.core.errors import AppError, LLMError, SinContextoRelevanteError, VectorStoreError
 from app.core.request_context import get_request_id
+from app.core.log_sanitizer import error_sanitizado
 from app.schemas.input import InputSchema
 from app.schemas.output import (
     AlmacenamientoOCISchema,
@@ -123,7 +124,10 @@ class AdaptacionService:
         except AppError:
             raise
         except Exception as exc:
-            logger.error("[%s] falla en paso '%s'", get_request_id(), nombre, exc_info=exc)
+            logger.error(
+                "[%s] falla en paso '%s' | %s",
+                get_request_id(), nombre, error_sanitizado(exc),
+            )
             raise error_cls() from exc
 
     def _persistir(self, payload, metadatos, contenido, evaluacion) -> AlmacenamientoOCISchema:
@@ -135,7 +139,10 @@ class AdaptacionService:
         try:
             return self._storage.guardar(payload, paquete)
         except Exception as exc:
-            logger.error("[%s] falla al subir a OCI (no invalida la respuesta)", get_request_id(), exc_info=exc)
+            logger.error(
+                "[%s] falla al subir a OCI (no invalida la respuesta) | %s",
+                get_request_id(), error_sanitizado(exc),
+            )
             return AlmacenamientoOCISchema(
                 bucket=settings.OCI_BUCKET_NAME,
                 objeto_id=OBJETO_NO_PERSISTIDO,
