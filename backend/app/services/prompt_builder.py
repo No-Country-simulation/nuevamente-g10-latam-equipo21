@@ -9,6 +9,12 @@ LangChain (`PromptTemplate`, tipos de mensaje) definidas como framework de orque
 El prompt base se mantiene fuera de `ChatPromptTemplate` a propósito: es texto estático que
 incluye ejemplos JSON con llaves literales, y `ChatPromptTemplate` interpretaría esas llaves
 como variables de template si se lo cargara como un mensaje templado.
+
+Construcción de los mensajes de prompt para la adaptación de contenido.
+
+Combina el prompt base de NM-08, las instrucciones de personalización
+y, cuando NM-D1 solicita una reescritura, incorpora la versión anterior
+del contenido junto con las observaciones del Agente Crítico.
 """
 
 from __future__ import annotations
@@ -21,8 +27,10 @@ from langchain_core.prompts import PromptTemplate
 
 from app.services.prompts import personalizacion
 
+
 _PROMPT_BASE_PATH = Path(__file__).parent / "prompts" / "adaptacion_base.md"
 _PROMPT_USUARIO_PATH = Path(__file__).parent / "prompts" / "adaptacion_usuario.md"
+_PROMPT_REVISION_PATH = Path(__file__).parent / "prompts" / "revision_critica.md"
 
 
 @lru_cache(maxsize=1)
@@ -32,9 +40,15 @@ def _cargar_prompt_base() -> str:
 
 @lru_cache(maxsize=1)
 def _cargar_plantilla_usuario() -> PromptTemplate:
-    # Sin el salto de línea final del archivo, para que el mensaje quede igual que antes.
     return PromptTemplate.from_template(
         _PROMPT_USUARIO_PATH.read_text(encoding="utf-8").rstrip("\n")
+    )
+
+
+@lru_cache(maxsize=1)
+def _cargar_plantilla_revision() -> PromptTemplate:
+    return PromptTemplate.from_template(
+        _PROMPT_REVISION_PATH.read_text(encoding="utf-8").rstrip("\n")
     )
 
 
@@ -46,32 +60,51 @@ def construir_mensajes_adaptacion(
     formato_salida: str,
     nicho_sector: str,
     nivel_detalle: str,
+    feedback_critico: str | None = None,
+    contenido_anterior_serializado: str | None = None,
 ) -> list[BaseMessage]:
     """
-    Arma los mensajes (sistema + humano) para la cadena de adaptación de contenido.
+    Arma los mensajes para generar o revisar contenido adaptado.
 
-    `contexto_recuperado` se trata como texto opaco ya ensamblado (responsabilidad de NM-06,
-    pendiente de integración): este builder no asume ninguna estructura interna sobre cómo se
-    obtuvo ese contexto, solo lo incorpora al prompt.
-
-    Los cuatro parámetros de personalización se esperan como los strings literales del contrato
-    documentado en docs/ARCHITECTURE.md. Un valor fuera de esos literales hace fallar esta
-    función con un `KeyError` explícito (la validación formal de esos valores es responsabilidad
-    de los esquemas de NM-07, todavía no integrados).
+    Sin feedback mantiene el comportamiento de NM-08.
+    Cuando existe feedback del Crítico, exige también la versión anterior
+    serializada para que el Redactor pueda corregir el contenido que fue evaluado.
     """
     formato_info = personalizacion.INSTRUCCIONES_FORMATO[formato_salida]
 
     mensaje_humano = _cargar_plantilla_usuario().format(
         documento_titulo=documento_titulo,
         contexto_recuperado=contexto_recuperado,
-        instrucciones_perfil=personalizacion.INSTRUCCIONES_PERFIL[perfil_destinatario],
+        instrucciones_perfil=personalizacion.INSTRUCCIONES_PERFIL[
+            perfil_destinatario
+        ],
         instrucciones_formato=formato_info["instrucciones"],
         ejemplo_item_formato=formato_info["ejemplo_item"],
         instrucciones_nicho=personalizacion.INSTRUCCIONES_NICHO[nicho_sector],
-        instrucciones_nivel_detalle=personalizacion.INSTRUCCIONES_NIVEL_DETALLE[nivel_detalle],
+        instrucciones_nivel_detalle=(
+            personalizacion.INSTRUCCIONES_NIVEL_DETALLE[nivel_detalle]
+        ),
     )
 
-    return [
+    mensajes: list[BaseMessage] = [
         SystemMessage(content=_cargar_prompt_base()),
         HumanMessage(content=mensaje_humano),
     ]
+
+    if feedback_critico is not None and feedback_critico.strip():
+        if (
+            contenido_anterior_serializado is None
+            or not contenido_anterior_serializado.strip()
+        ):
+            raise ValueError(
+                "El feedback del Crítico requiere el contenido anterior."
+            )
+
+        mensaje_revision = _cargar_plantilla_revision().format(
+            contenido_anterior=contenido_anterior_serializado.strip(),
+            feedback_critico=feedback_critico.strip(),
+        )
+
+        mensajes.append(HumanMessage(content=mensaje_revision))
+
+    return mensajes

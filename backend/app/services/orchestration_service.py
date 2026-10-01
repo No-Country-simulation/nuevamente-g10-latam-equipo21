@@ -62,6 +62,8 @@ def generar_contenido_adaptado(
     nicho_sector: str,
     nivel_detalle: str,
     llm_provider: LLMProvider,
+    feedback_critico: str | None = None,
+    contenido_anterior: ContenidoAdaptadoSchema | None = None,
 ) -> ContenidoAdaptadoSchema:
     """
     Genera el contenido adaptado para un documento, anclado al contexto recuperado.
@@ -76,6 +78,11 @@ def generar_contenido_adaptado(
     Levanta `LLMTimeoutError`/`LLMProviderError` (ver llm_provider.py) si el proveedor falla o
     no responde a tiempo; nunca deja la llamada colgada.
     """
+    contenido_anterior_serializado = (
+        contenido_anterior.model_dump_json()
+        if contenido_anterior is not None
+        else None
+    )
     mensajes = construir_mensajes_adaptacion(
         documento_titulo=documento_titulo,
         contexto_recuperado=contexto_recuperado,
@@ -83,6 +90,8 @@ def generar_contenido_adaptado(
         formato_salida=formato_salida,
         nicho_sector=nicho_sector,
         nivel_detalle=nivel_detalle,
+        feedback_critico=feedback_critico,
+        contenido_anterior_serializado=contenido_anterior_serializado,
     )
     resultado = llm_provider.generate_structured(mensajes, ContenidoAdaptadoSchema)
 
