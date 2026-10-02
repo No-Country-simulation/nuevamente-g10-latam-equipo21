@@ -16,7 +16,7 @@ El caso de uso principal pertenece al sector **EdTech**, con contextualizacion a
 - Segmentacion, embeddings e indexacion local con ChromaDB.
 - Recuperacion de contexto relevante antes de generar contenido.
 - Adaptacion mediante Google Gemini con salida estructurada.
-- Flujo multi-agente con Investigador RAG, Redactor Pedagogico y Critico/Revisor.
+- Flujo multi-agente experimental con Investigador RAG, Redactor Pedagogico y Critico/Revisor.
 - Cinco formatos pedagogicos: Tutorial, Flashcards, Quiz, Resumen Ejecutivo y Guion de Clase.
 - Evaluacion de fidelidad y claridad pedagogica.
 - Metadatos de aprendizaje y estimacion del tiempo de estudio.
@@ -54,7 +54,7 @@ endpoint -> servicio de adaptacion -> RAG / Gemini / evaluacion / metadatos
                                 \-> servicio de almacenamiento -> OCI
 ```
 
-El flujo lineal es el recorrido principal del MVP. El servicio multi-agente implementado con LangGraph reutiliza retrieval, generacion y evaluacion para permitir ciclos de revision controlados; su activacion dentro del endpoint integral se mantiene desacoplada.
+El flujo lineal es el recorrido principal del endpoint del MVP. El servicio multi-agente implementado con LangGraph reutiliza retrieval, generacion y evaluacion para permitir ciclos de revision controlados, pero todavia se ejecuta mediante un script de comparacion y no esta seleccionable desde el endpoint integral.
 
 La descripcion completa y los contratos de datos se encuentran en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -65,10 +65,20 @@ La descripcion completa y los contratos de datos se encuentran en [`docs/ARCHITE
 | API | FastAPI + Python 3.11+ |
 | Validacion | Pydantic v2 |
 | LLM y embeddings | Google Gemini |
-| Orquestacion | LangChain + LangGraph |
+| Orquestacion | LangChain (endpoint del MVP) + LangGraph (flujo experimental) |
 | Base vectorial | ChromaDB |
 | Persistencia | OCI Object Storage |
 | Pruebas | Pytest |
+
+### Estado actual de los componentes
+
+| Componente | Estado |
+|---|---|
+| Backend FastAPI | Implementado: ingesta, RAG, generacion, fidelidad, metadatos y persistencia OCI. |
+| Pipeline lineal | Integrado en `POST /api/v1/adaptar-contenido`. |
+| Flujo multi-agente | Implementado y probado mediante script; pendiente de exponer desde el endpoint. |
+| Frontend Streamlit | Definido por la arquitectura; todavia no esta implementado en `develop`. |
+| Despliegue OCI Compute | Infraestructura base preparada; despliegue completo de los servicios pendiente. |
 
 ## Estructura del repositorio
 
@@ -95,7 +105,7 @@ docs/
 - Una API key de Google Gemini para probar el pipeline real.
 - Una cuenta de OCI con Object Storage para probar la persistencia real.
 
-El modo mock permite probar el contrato de adaptacion sin consumir Gemini ni OCI.
+El modo mock permite probar el contrato de adaptacion sin consumir Gemini ni escribir objetos en OCI.
 
 ## Instalacion local
 
@@ -199,11 +209,32 @@ No compartas el archivo `.env`, `~/.oci/config`, claves `.pem` ni credenciales r
 
 Para despliegues sobre una instancia de OCI debe utilizarse la autenticacion mediante principal de instancia, evitando claves de usuario almacenadas en el servidor.
 
-NM-11 ya proporciona la carga del documento original y del paquete generado. La conexion de ese servicio con el pipeline integral de NM-12 se completa en un PR de integracion separado.
+NM-11 proporciona la carga del documento original y del paquete generado. Su adaptador ya esta conectado al pipeline integral de NM-12. Si OCI falla, la generacion no se descarta: el endpoint conserva HTTP 200 y devuelve `almacenamiento_oci.status_upload="error"`.
 
 ## Ejecucion
 
 Todos los comandos siguientes deben ejecutarse desde `backend/`, con el entorno virtual activo.
+
+### Modo mock
+
+Permite comprobar el contrato HTTP sin utilizar Gemini, ChromaDB ni OCI:
+
+```dotenv
+USE_MOCK_LLM=true
+```
+
+### Pipeline real
+
+Ejecuta recuperacion, Gemini, evaluacion, metadatos y persistencia en OCI:
+
+```dotenv
+USE_MOCK_LLM=false
+GEMINI_API_KEY=tu_api_key
+OCI_AUTH_MODE=api_key
+OCI_NAMESPACE=tu_namespace
+```
+
+En el pipeline real tambien deben completarse las variables OCI restantes descritas en la seccion de configuracion. Dentro de OCI Compute debe utilizarse `OCI_AUTH_MODE=instance_principal` y no deben copiarse credenciales de usuario a la instancia.
 
 Iniciar la API en modo desarrollo:
 
@@ -216,7 +247,7 @@ Servicios disponibles:
 - API: <http://127.0.0.1:8000>
 - Estado: <http://127.0.0.1:8000/api/v1/health>
 - Swagger UI: <http://127.0.0.1:8000/api/v1/docs>
-- Acceso corto a Swagger: <http://127.0.0.1:8000/docs> (disponible con NM-12).
+- Acceso corto a Swagger: <http://127.0.0.1:8000/docs>.
 - OpenAPI: <http://127.0.0.1:8000/api/v1/openapi.json>
 
 Ejecutar las pruebas:
@@ -224,6 +255,16 @@ Ejecutar las pruebas:
 ```powershell
 python -m pytest tests -q
 ```
+
+La prueba contra el bucket real es opt-in para evitar escrituras accidentales durante una ejecucion normal:
+
+```powershell
+$env:RUN_OCI_INTEGRATION = "1"
+python -m pytest tests/test_storage_oci_integration.py -v -s
+Remove-Item Env:RUN_OCI_INTEGRATION
+```
+
+La politica IAM del proyecto permite crear y leer objetos, pero no eliminarlos. Por ese motivo, el objeto pequeño generado por la prueba puede permanecer en el bucket y requerir limpieza manual desde una identidad administrativa.
 
 ## Uso de la API
 
@@ -300,7 +341,26 @@ Valores admitidos:
 - `nicho_sector`: `Fintech`, `Salud`, `Ecommerce`, `General`.
 - `nivel_detalle`: `Introductorio`, `Didactico`, `Tecnico_Profundo`.
 
-> Con `USE_MOCK_LLM=true`, el endpoint devuelve datos de prueba respetando el contrato. Con `USE_MOCK_LLM=false` utiliza el pipeline real. La persistencia generada quedara operativa cuando se integre el adaptador entre NM-12 y NM-11.
+> Con `USE_MOCK_LLM=true`, el endpoint devuelve datos de prueba respetando el contrato y no ejecuta servicios externos. Con `USE_MOCK_LLM=false`, utiliza el pipeline real y persiste el paquete generado mediante OCI Object Storage.
+
+### Comportamiento ante errores
+
+- Una entrada invalida devuelve HTTP 422 con `status: "error"` y el bloque `error` (`codigo`, `mensaje`).
+- Un fallo del LLM o del vector store devuelve HTTP 502 sin exponer trazas ni credenciales.
+- Un fallo de OCI no invalida el contenido generado: devuelve HTTP 200 con `almacenamiento_oci.status_upload: "error"`.
+- Los errores quedan asociados a un identificador de peticion en los logs del backend.
+
+Ejemplo de entrada invalida:
+
+```json
+{
+  "status": "error",
+  "error": {
+    "codigo": "ENTRADA_INVALIDA",
+    "mensaje": "Campo 'perfil_destinatario': valor no permitido"
+  }
+}
+```
 
 ## Seguridad
 
@@ -332,7 +392,9 @@ El historial de implementacion y las contribuciones individuales pueden consulta
 - [x] Configuracion inicial de OCI Object Storage.
 - [x] Ejemplo de request y response.
 - [x] Actualizar variables y configuracion despues de integrar NM-11.
-- [ ] Actualizar y validar la guia despues del PR de integracion entre NM-11 y NM-12.
+- [x] Actualizar la guia despues de integrar NM-11 con NM-12.
+- [x] Aclarar el estado del frontend y del flujo multi-agente.
+- [x] Actualizar `docs/ARCHITECTURE.md` con el contrato y el estado implementado.
 - [ ] Validar la instalacion desde cero con una persona que no haya escrito esta documentacion.
 - [ ] Verificar el historial y las contribuciones del equipo antes de la entrega.
 
