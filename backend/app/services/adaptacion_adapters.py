@@ -7,18 +7,32 @@ Cableados contra código real:
 - VerificadorRealAdapter -> NM-09 (evaluar_fidelidad), con import perezoso:
   así el modo mock no carga el SDK de Gemini.
 
-PENDIENTES (levantan PipelineNoConfiguradaError -> HTTP 501):
-- MetadatosRealAdapter (NM-10).
-- StorageNoDisponible (NM-11): la subida "falla" y el endpoint responde 200 con
-  almacenamiento_oci.status_upload="error", como exige NM-12.
+- MetadatosRealAdapter     -> NM-10 (generar_metadatos_aprendizaje).
+- StorageOCIAdapter        -> NM-11 (OCIStorageService.persist_generated_package).
+
+Persistencia (criterio de NM-12): ninguna falla de OCI invalida la respuesta; el
+endpoint responde 200 con almacenamiento_oci.status_upload="error". Sobre objeto_id:
+- nombre del objeto + "error": se intentó subir y la subida falló (NM-11).
+- "no-persistido" + "error": ni siquiera se llegó a intentar (configuración OCI
+  incompleta, credenciales inválidas, cliente que no se pudo construir).
+Quien consuma la respuesta debe decidir por status_upload, nunca por objeto_id.
 """
 
 import hashlib
 import logging
 from functools import lru_cache
 
+from app.core.config import settings
 from app.core.errors import PipelineNoConfiguradaError
+from app.schemas.output import (
+    AlmacenamientoOCISchema,
+    ContenidoAdaptadoSchema,
+    EvaluacionCalidadSchema,
+    MetadatosSchema,
+    OutputSchema,
+)
 from app.services.adaptacion_service import (
+    OBJETO_NO_PERSISTIDO,
     AdaptacionService,
     ContextoRecuperado,
     FuenteContexto,
@@ -183,9 +197,56 @@ class MetadatosRealAdapter:
         )
 
 
-class StorageNoDisponible:                       # NM-11 (sin tomar)
-    def guardar(self, payload, paquete):
-        raise RuntimeError("NM-11 no implementado: sin persistencia en OCI")
+def armar_respuesta_provisional(paquete: dict) -> OutputSchema:
+    """Reconstruye el OutputSchema que exige OCIStorageService.persist_generated_package.
+
+    El puerto Storage entrega el paquete como dict; NM-11 pide un OutputSchema. El
+    bloque almacenamiento_oci es provisional (status_upload="error"): NM-11 lo
+    reemplaza con el resultado real de la subida.
+    """
+    return OutputSchema(
+        status="exito",
+        metadatos=MetadatosSchema.model_validate(paquete["metadatos"]),
+        contenido_adaptado=ContenidoAdaptadoSchema.model_validate(paquete["contenido_adaptado"]),
+        evaluacion_calidad=EvaluacionCalidadSchema.model_validate(paquete["evaluacion_calidad"]),
+        almacenamiento_oci=AlmacenamientoOCISchema(
+            bucket=settings.OCI_BUCKET_NAME,
+            objeto_id=OBJETO_NO_PERSISTIDO,
+            status_upload="error",
+        ),
+    )
+
+
+class StorageOCIAdapter:
+    """NM-11. Persiste el paquete generado en OCI Object Storage.
+
+    El servicio OCI se construye de forma perezosa en el primer guardar(), no al
+    instanciar el adaptador: _servicio_real() está cacheado y construir el cliente
+    ahí fijaría para siempre un fallo de configuración. Solo se conserva el servicio
+    si se pudo construir; si la fábrica lanza, la excepción sube a
+    AdaptacionService._persistir, que la convierte en status_upload="error".
+    """
+
+    def __init__(self, service_factory=None) -> None:
+        self._factory = service_factory
+        self._servicio = None
+
+    def _obtener_servicio(self):
+        if self._servicio is None:
+            factory = self._factory
+            if factory is None:
+                from app.services.oci_storage_service import get_oci_storage_service
+                factory = get_oci_storage_service
+            self._servicio = factory()
+        return self._servicio
+
+    def guardar(self, payload, paquete) -> AlmacenamientoOCISchema:
+        servicio = self._obtener_servicio()
+        persistido = servicio.persist_generated_package(
+            payload=payload,
+            response=armar_respuesta_provisional(paquete),
+        )
+        return persistido.almacenamiento_oci
 
 
 @lru_cache(maxsize=1)
@@ -196,7 +257,7 @@ def _servicio_real() -> AdaptacionService:
         generador=GeneradorRealAdapter(),
         verificador=VerificadorRealAdapter(contexto),
         metadatos=MetadatosRealAdapter(),
-        storage=StorageNoDisponible(),
+        storage=StorageOCIAdapter(),
     )
 
 

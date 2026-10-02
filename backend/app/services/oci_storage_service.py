@@ -13,6 +13,7 @@ from typing import Any, Callable, Protocol
 import oci
 
 from app.core.config import Settings, settings
+from app.core.request_context import get_request_id
 from app.schemas.input import InputSchema
 from app.schemas.output import AlmacenamientoOCISchema, OutputSchema
 
@@ -121,9 +122,10 @@ class OCIStorageService:
             status_upload = "completado"
         except Exception as error:  # El límite OCI debe preservar el contenido generado.
             logger.error(
-                "Falló la carga del objeto '%s' en OCI Object Storage (%s).",
+                "Falló la carga del objeto '%s' en OCI Object Storage (%s) [request_id=%s].",
                 object_name,
                 type(error).__name__,
+                get_request_id(),
             )
             status_upload = "error"
 
