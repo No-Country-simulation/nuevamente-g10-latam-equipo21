@@ -1,7 +1,8 @@
-from typing import List, Union
-from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
 import json
+from typing import List, Literal, Union
+
+from pydantic import SecretStr, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -63,12 +64,19 @@ class Settings(BaseSettings):
     # Verificación de fidelidad (NM-09)
     FIDELITY_SCORE_THRESHOLD: float = 0.7
 
+    # Orquestación multi-agente con LangGraph (NM-D1)
+    MULTI_AGENT_MAX_ITERATIONS: int = 3
+
     # Oracle Cloud Infrastructure (OCI Object Storage)
-    OCI_CONFIG_FILE: str = "~/.oci/config"
-    OCI_PROFILE: str = "DEFAULT"
+    OCI_AUTH_MODE: Literal["instance_principal", "api_key"] = "instance_principal"
     OCI_NAMESPACE: str = ""
     OCI_BUCKET_NAME: str = "nuevamente-contenidos-educativos"
     OCI_REGION: str = "sa-saopaulo-1"
+    OCI_USER_OCID: str = ""
+    OCI_TENANCY_OCID: str = ""
+    OCI_FINGERPRINT: str = ""
+    OCI_KEY_FILE: str = ""
+    OCI_KEY_PASSPHRASE: SecretStr | None = None
 
 
 settings = Settings()
