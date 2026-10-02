@@ -25,7 +25,6 @@ Vive en app/services/ (y no en app/api/) siguiendo la separación de NM-03:
 la capa de API solo orquesta, la lógica de negocio va en servicios.
 """
 
-import uuid
 
 from app.core.config import settings
 from app.schemas.content import (
