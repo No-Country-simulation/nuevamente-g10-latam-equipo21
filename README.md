@@ -371,8 +371,6 @@ Ejemplo de entrada invalida:
 
 ## Historial de tickets integrados
 
-La siguiente tabla resume los tickets implementados que ya forman parte de `develop`. La responsabilidad corresponde a quien desarrollo el ticket; la review identifica a quien verifico los cambios y dejo la aprobacion registrada en GitHub. Ejecutar el merge no transfiere la autoria de la implementacion.
-
 | Fecha de integracion | Ticket | Entrega incorporada | Responsable de implementacion | Pull request | Responsable de la review aprobatoria |
 |---|---|---|---|---|---|
 | 23 sep 2026 | NM-03 | Estructura inicial del backend FastAPI, configuracion y documentacion base. | Leandro Melchiori | [#29](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/29) | Bianca Zorio |
