@@ -43,11 +43,14 @@ from app.schemas.output import (
     MetadatosSchema,
     OutputSchema,
 )
-from app.services.adaptacion_service import OBJETO_NO_PERSISTIDO
 
 # Se toma del Settings centralizado (NM-03), no hardcodeado, para que quede
 # consistente con OCI_BUCKET_NAME cuando NM-11/NM-02 lo usen de verdad.
 BUCKET_MOCK = settings.OCI_BUCKET_NAME
+
+# Identificador propio del mock. Es distinto de "no-persistido" (el valor del flujo real)
+# para que una respuesta simulada se pueda reconocer a simple vista (NM-20).
+OBJETO_ID_MOCK = "mock-no-persistido"
 
 
 def _base_metadatos(payload: InputSchema, minutos: int, conceptos: list[str]) -> MetadatosSchema:
@@ -66,17 +69,16 @@ def _base_evaluacion() -> EvaluacionCalidadSchema:
         observaciones="Respuesta MOCK (NM-18) — no proviene de la pipeline RAG real.",
     )
 
-    
+
 def _base_almacenamiento() -> AlmacenamientoOCISchema:
-    # El mock no sube nada a OCI. Se usa la misma convención que el endpoint real
-    # (adaptacion_adapters.py): objeto_id="no-persistido" + status_upload="error"
-    # significa que no se intentó subir. Reportar "completado" sería un éxito falso (NM-20).
+    # El mock no sube nada a OCI. status_upload="error" indica que no hubo subida
+    # y objeto_id="mock-no-persistido" identifica la respuesta como simulada.
+    # Reportar "completado" sería un éxito falso (NM-20).
     return AlmacenamientoOCISchema(
         bucket=BUCKET_MOCK,
-        objeto_id=OBJETO_NO_PERSISTIDO,
+        objeto_id=OBJETO_ID_MOCK,
         status_upload="error",
-    )    
-
+    )
 
 def _mock_flashcards(payload: InputSchema) -> OutputSchema:
     items = [
