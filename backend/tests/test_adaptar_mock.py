@@ -56,7 +56,8 @@ def test_responde_estructura_completa_por_formato(formato, campos_item_esperados
     assert data["metadatos"]["perfil_aplicado"] == PAYLOAD_BASE["perfil_destinatario"]
 
     assert data["almacenamiento_oci"]["bucket"] == settings.OCI_BUCKET_NAME
-    assert data["almacenamiento_oci"]["status_upload"] == "completado"
+    assert data["almacenamiento_oci"]["status_upload"] == "error"
+    assert data["almacenamiento_oci"]["objeto_id"] == "no-persistido"
 
     assert 0 <= data["evaluacion_calidad"]["anclaje_fuente_score"] <= 1
     assert data["evaluacion_calidad"]["claridad_pedagogica"] in {"Alta", "Media", "Baja"}
@@ -102,3 +103,10 @@ def test_mock_se_apaga_por_variable_de_entorno(monkeypatch):
 
     # Con USE_MOCK_LLM=false el endpoint delega en el servicio real, no en el mock.
     assert resp.status_code == 200 and len(llamados) == 1
+    
+def test_mock_no_reporta_una_subida_exitosa_a_oci():
+    payload = {**PAYLOAD_BASE, "formato_salida": "Flashcards"}
+    data = client.post(ENDPOINT, json=payload).json()
+
+    assert data["almacenamiento_oci"]["status_upload"] != "completado"
+    assert not data["almacenamiento_oci"]["objeto_id"].startswith("mock/")
