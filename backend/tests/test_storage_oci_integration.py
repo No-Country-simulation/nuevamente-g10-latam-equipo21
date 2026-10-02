@@ -8,12 +8,15 @@ OCI ya cargadas en tu .env local:
 
 Se exige un opt-in explícito (y no solo mirar si hay credenciales) porque Settings
 lee el .env: de otro modo cualquier `pytest` local subiría objetos al bucket.
-El test sube un objeto de pocos KB con título identificable, lo lee de vuelta y lo
-borra al terminar (Always Free: no deja residuos ni consume cuota relevante).
+El test sube un objeto de pocos KB con título identificable, lo lee de vuelta e
+intenta borrarlo. Con la política IAM de mínimo privilegio (crear y leer, sin
+eliminar) el borrado falla y el objeto permanece en el bucket; puede eliminarse
+manualmente. Se reconoce por el nombre: contiene "test-integracion-nm12-".
 """
 
 import os
 import uuid
+import warnings
 
 import pytest
 
@@ -82,5 +85,9 @@ def test_adaptador_persiste_y_el_objeto_existe_en_el_bucket():
                 bucket_name=resultado.bucket,
                 object_name=resultado.objeto_id,
             )
-        except Exception:
-            pass
+        except Exception as error:
+            warnings.warn(
+                f"No se pudo borrar el objeto de prueba '{resultado.objeto_id}' "
+                f"({type(error).__name__}); puede permanecer en el bucket.",
+                stacklevel=1,
+            )
