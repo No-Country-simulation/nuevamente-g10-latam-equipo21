@@ -357,7 +357,7 @@ Ejemplo de entrada invalida:
   "status": "error",
   "error": {
     "codigo": "ENTRADA_INVALIDA",
-    "mensaje": "Campo 'perfil_destinatario': valor no permitido"
+    "mensaje": "Campo 'perfil_destinatario': Input should be 'Principiante', 'Desarrollador_Junior_SemiSenior', 'Lider_Tecnico_Arquitecto' or 'Gestor_Ejecutivo_No_Tecnico'"
   }
 }
 ```
@@ -371,7 +371,7 @@ Ejemplo de entrada invalida:
 
 ## Historial de tickets integrados
 
-| Fecha de integracion | Ticket | Entrega incorporada | Responsable de implementacion | Pull request | Responsable de la review aprobatoria |
+| Fecha de integracion (UTC) | Ticket | Entrega incorporada | Responsable de implementacion | Pull request | Responsable de la review aprobatoria |
 |---|---|---|---|---|---|
 | 23 sep 2026 | NM-03 | Estructura inicial del backend FastAPI, configuracion y documentacion base. | Leandro Melchiori | [#29](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/29) | Bianca Zorio |
 | 24 sep 2026 | NM-05 | Chunking, embeddings e indexacion en ChromaDB. | Ever Ayala | [#35](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/35) | Leandro Melchiori |
@@ -387,24 +387,7 @@ Ejemplo de entrada invalida:
 | 1 oct 2026 | NM-11 | Persistencia de documentos y paquetes generados en OCI Object Storage. | Leandro Melchiori | [#42](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/42) | Gustavo |
 | 1 y 2 oct 2026 | NM-12 | Endpoint integral, errores tipados, trazabilidad y adaptador real de OCI Object Storage. | Gustavo | [#43](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/43), [#46](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/46) | Leandro Melchiori |
 
-NM-16 no aparece todavia en la tabla porque esta documentacion se encuentra en su rama de trabajo y aun no fue integrada en `develop`.
-
 Las ramas de funcionalidad se crean desde `develop` con el formato `feature/NM-XX-descripcion`. Los cambios ingresan mediante pull request y requieren la revision de otro integrante. Consulta [`CONTRIBUTING.md`](CONTRIBUTING.md), el [historial de `develop`](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/commits/develop/) y la vista de [contribuidores](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/graphs/contributors) para auditar la informacion.
-
-## Estado de la validacion de NM-16
-
-- [x] Descripcion del proyecto, problema y sector.
-- [x] Diagrama de arquitectura embebido.
-- [x] Guia inicial de instalacion y ejecucion.
-- [x] Inventario inicial de variables de entorno.
-- [x] Configuracion inicial de OCI Object Storage.
-- [x] Ejemplo de request y response.
-- [x] Actualizar variables y configuracion despues de integrar NM-11.
-- [x] Actualizar la guia despues de integrar NM-11 con NM-12.
-- [x] Aclarar el estado del frontend y del flujo multi-agente.
-- [x] Actualizar `docs/ARCHITECTURE.md` con el contrato y el estado implementado.
-- [ ] Validar la instalacion desde cero con una persona que no haya escrito esta documentacion.
-- [ ] Documentar los tickets integrados, sus responsables y las reviews aprobatorias - Ultima actualizacion 02/10/2026.
 
 ## Documentacion adicional
 
