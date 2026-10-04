@@ -1,4 +1,3 @@
-import json
 import os
 from pathlib import Path
 
@@ -6,7 +5,6 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from components.file_uploader import render_file_uploader
-from components.result_view import render_result
 from components.sidebar import render_adaptation_options
 from services.api_client import APIClientError, adapt_document, extract_document
 
@@ -106,29 +104,15 @@ if submitted:
 			with st.spinner("Extrayendo el documento y preparando el material..."):
 				result = run_adaptation(uploaded_file, document_title, options)
 			st.session_state["adaptation_result"] = result
-			st.session_state["generation_id"] = st.session_state.get("generation_id", 0) + 1
 			st.session_state["source_filename"] = uploaded_file.name
 			st.session_state["generated_options"] = options.copy()
+			st.success("La adaptación se lanzó correctamente y quedó lista para procesarse.")
 		except APIClientError as error:
 			st.error(str(error))
 
 result = st.session_state.get("adaptation_result")
-generated_options = st.session_state.get("generated_options")
-if result and generated_options != options:
-	st.info("La configuración cambió. El resultado de abajo corresponde a la selección anterior.")
-
-if result:
-	render_result(result, st.session_state.get("source_filename", "Documento fuente"))
-else:
-	st.markdown(
-		"""
-		<div class="empty-state"><div class="empty-symbol">↗</div>
-		<div><strong>Sin generación todavía</strong>
-		<p>Selecciona un documento y genera el material educativo.</p></div>
-		<span class="empty-step">EN ESPERA</span></div>
-		""",
-		unsafe_allow_html=True,
-	)
+if result and result.get("status") == "error":
+	st.error(result.get("error", {}).get("mensaje", "No se pudo completar la adaptación."))
 
 st.markdown(
 	f'<div class="api-footnote"><span class="status-dot"></span> API · {API_BASE_URL}</div>',

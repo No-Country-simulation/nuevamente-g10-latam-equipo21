@@ -61,30 +61,11 @@ def test_supported_file_enables_controls_and_prefills_title():
 	assert not app.button[0].disabled
 
 
-def test_generation_extracts_then_adapts_and_shows_result(monkeypatch):
+def test_generation_extracts_then_adapts_and_shows_success_message(monkeypatch):
 	calls = []
 	responses = [
 		FakeResponse({"text": "Texto fuente", "metadata": {}}),
-		FakeResponse(
-			{
-				"status": "exito",
-				"metadatos": {
-					"formato_generado": "Tutorial",
-					"tiempo_estimado_estudio_minutos": 10,
-					"conceptos_clave": [],
-				},
-				"contenido_adaptado": {
-					"titulo": "Tutorial generado",
-					"introduccion_contextualizada": "",
-					"items": [],
-				},
-				"evaluacion_calidad": {},
-				"almacenamiento_oci": {
-					"status_upload": "error",
-					"objeto_id": "mock-no-persistido",
-				},
-			}
-		),
+		FakeResponse({"status": "exito", "mensaje": "Contenido listo"}),
 	]
 
 	def fake_request(method, url, **kwargs):
@@ -109,9 +90,7 @@ def test_generation_extracts_then_adapts_and_shows_result(monkeypatch):
 		"nicho_sector": "General",
 		"nivel_detalle": "Didactico",
 	}
-	assert any(title.value == "Tutorial generado" for title in app.title)
-	assert any(metric.label == "Persistencia OCI" and metric.value == "No se persistió" for metric in app.metric)
-	assert not any("mock-no-persistido" in caption.value for caption in app.caption)
+	assert any("La adaptación se lanzó correctamente" in message.value for message in app.success)
 
 
 def test_api_error_is_displayed_without_clearing_form_selections(monkeypatch):

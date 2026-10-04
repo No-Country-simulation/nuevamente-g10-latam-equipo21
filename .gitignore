@@ -231,3 +231,7 @@ backend/chroma_benchmark_nm05/
 # Comparativa local NM-D1
 chroma_comparativa_nm_d1/
 backend/chroma_comparativa_nm_d1/
+
+# Entornos Virtuales para Full Stack
+backend/venv/
+frontend/venv/
