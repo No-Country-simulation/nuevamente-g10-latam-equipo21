@@ -90,7 +90,7 @@ def test_generation_extracts_then_adapts_and_shows_success_message(monkeypatch):
 		"nicho_sector": "General",
 		"nivel_detalle": "Didactico",
 	}
-	assert any("La adaptación se lanzó correctamente" in message.value for message in app.success)
+	assert any("El contenido educativo se generó correctamente." in message.value for message in app.success)
 
 
 def test_api_error_is_displayed_without_clearing_form_selections(monkeypatch):
