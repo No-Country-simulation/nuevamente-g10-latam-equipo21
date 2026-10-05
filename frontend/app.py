@@ -130,12 +130,19 @@ if submitted:
                     options,
                 )
 
+            if result.get("status") != "exito":
+                error = result.get("error")
+                message = (
+                    error.get("mensaje") if isinstance(error, dict) else None
+                )
+                raise APIClientError(
+                    message or "No se pudo completar la adaptación."
+                )
+
             st.session_state["adaptation_result"] = result
             st.session_state["source_filename"] = uploaded_file.name
             st.session_state["generated_options"] = options.copy()
-
-            if result.get("status") == "exito":
-                st.success("El contenido educativo se generó correctamente.")
+            st.success("El contenido educativo se generó correctamente.")
 
         except APIClientError as error:
             st.error(str(error))
