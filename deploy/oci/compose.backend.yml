@@ -1,0 +1,54 @@
+name: nuevamente
+
+services:
+  backend:
+    image: ${NUEVAMENTE_BACKEND_IMAGE:?Defina NUEVAMENTE_BACKEND_IMAGE}
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.75
+    mem_limit: 3g
+    pids_limit: 256
+    env_file:
+      - ${NUEVAMENTE_BACKEND_ENV_FILE:-/etc/docker-platform/apps/nuevamente/runtime.env}
+    environment:
+      ENVIRONMENT: production
+      USE_MOCK_LLM: "false"
+      OCI_AUTH_MODE: instance_principal
+      CHROMA_PERSIST_DIRECTORY: /app/chroma_db
+    volumes:
+      - chroma_data:/app/chroma_db
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    expose:
+      - "8000"
+    networks:
+      - backend_internal
+      - proxy
+
+volumes:
+  chroma_data:
+    name: nuevamente-chroma-data
+
+networks:
+  backend_internal:
+    name: nuevamente-internal
+    internal: true
+  proxy:
+    external: true
+    name: proxy
