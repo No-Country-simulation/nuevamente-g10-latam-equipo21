@@ -171,7 +171,7 @@ def test_failed_upload_keeps_generated_content_and_shows_warning():
     assert not app.exception
     assert "Una red privada virtual." in visible_text(app)
     assert any(
-        "no pudo almacenarse en OCI" in message.value
+        "no se persistió en OCI" in message.value
         for message in app.warning
     )
     assert len(app.success) == 0

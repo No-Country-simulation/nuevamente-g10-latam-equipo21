@@ -148,7 +148,7 @@ def render_package_result(result: dict) -> None:
     elif storage.get("status_upload") == "error":
         st.warning(
             "El contenido fue generado correctamente, "
-            "pero no pudo almacenarse en OCI."
+             "pero no se persistió en OCI."
         )
     else:
         st.info("No se recibió confirmación de almacenamiento en OCI.")
