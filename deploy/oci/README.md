@@ -154,6 +154,36 @@ sudo docker port nuevamente-backend-1
 
 El comando no debe devolver ninguna asignación de puertos.
 
+### Prueba end-to-end y persistencia en Object Storage
+
+Con `USE_MOCK_LLM=false`, cargar un documento admitido desde la URL pública de
+Streamlit y solicitar una generación. La interfaz debe confirmar que la
+adaptación se completó correctamente.
+
+Desde la instancia se puede comprobar la persistencia mediante Instance
+Principal, sin utilizar credenciales OCI estáticas:
+
+```bash
+oci os object list \
+  --auth instance_principal \
+  --bucket-name nuevamente-contenidos-educativos \
+  --all \
+  --query 'data[].{nombre:name,creado:"time-created",tamano:size}' \
+  --output table
+```
+
+La validación end-to-end realizada el 5 de octubre de 2026 con el documento
+`Learn Python in Y Minutes.pdf` confirmó la persistencia de ambos artefactos:
+
+```text
+originales/1277c3810f7d1324-learn-python-in-y-minutes.pdf
+contenido-learn-python-in-y-minutes-lider-tecnico-arquitecto-resumen-ejecutivo-aa4ad01391c5.json
+```
+
+El documento original y el paquete educativo generado deben aparecer en el
+mismo bucket. Una respuesta exitosa de la interfaz sin el JSON correspondiente
+no se considera una validación completa del despliegue.
+
 ## Actualización del frontend
 
 Cuando se integre un cambio como NM-14 no es necesario recrear la infraestructura
