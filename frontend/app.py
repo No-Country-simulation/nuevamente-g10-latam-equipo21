@@ -103,6 +103,10 @@ if submitted:
 		try:
 			with st.spinner("Extrayendo el documento y preparando el material..."):
 				result = run_adaptation(uploaded_file, document_title, options)
+			if result.get("status") != "exito":
+				error = result.get("error")
+				message = error.get("mensaje") if isinstance(error, dict) else None
+				raise APIClientError(message or "No se pudo completar la adaptación.")
 			st.session_state["adaptation_result"] = result
 			st.session_state["source_filename"] = uploaded_file.name
 			st.session_state["generated_options"] = options.copy()

@@ -93,6 +93,25 @@ def test_generation_extracts_then_adapts_and_shows_success_message(monkeypatch):
 	assert any("La adaptación se lanzó correctamente" in message.value for message in app.success)
 
 
+def test_http_success_with_error_status_shows_only_adaptation_error(monkeypatch):
+	responses = [
+		FakeResponse({"text": "Texto fuente", "metadata": {}}),
+		FakeResponse(
+			{"status": "error", "error": {"codigo": "ERROR_TEST", "mensaje": "Servicio no disponible"}}
+		),
+	]
+
+	monkeypatch.setattr(requests, "request", lambda *args, **kwargs: responses.pop(0))
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click()
+	app.run()
+
+	assert not any("La adaptación se lanzó correctamente" in message.value for message in app.success)
+	assert any("Servicio no disponible" in error.value for error in app.error)
+
+
 def test_api_error_is_displayed_without_clearing_form_selections(monkeypatch):
 	def fake_request(method, url, **kwargs):
 		return FakeResponse(
