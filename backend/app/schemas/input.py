@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import Field, StrictStr
 
+from app.schemas.base import PublicSchema
 from app.schemas.enums import (
     FormatoSalida,
     NichoSector,
@@ -7,20 +8,19 @@ from app.schemas.enums import (
     PerfilDestinatario,
 )
 
-class InputSchema(BaseModel):
-    documento_titulo: str = Field(
+
+class InputSchema(PublicSchema):
+    documento_titulo: StrictStr = Field(
         ...,
         min_length=3,
         description="Título del documento técnico",
     )
 
-    documento_contenido: str = Field(
+    documento_contenido: StrictStr = Field(
         ...,
         min_length=10,
         description="Contenido del documento técnico que será adaptado",
     )
-
-
 
     perfil_destinatario: PerfilDestinatario = Field(
         ...,
