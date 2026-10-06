@@ -8,6 +8,7 @@ from components.file_uploader import render_file_uploader
 from components.package_result import render_package_result
 from components.sidebar import render_adaptation_options
 from services.api_client import APIClientError, adapt_document, extract_document
+from components.download_json import render_json_download
 
 
 FRONTEND_DIR = Path(__file__).resolve().parent
@@ -140,6 +141,7 @@ if submitted:
                 )
 
             st.session_state["adaptation_result"] = result
+            st.session_state["document_title"] = document_title.strip()
             st.session_state["source_filename"] = uploaded_file.name
             st.session_state["generated_options"] = options.copy()
             st.success("El contenido educativo se generó correctamente.")
@@ -159,6 +161,11 @@ if result:
         )
     elif result.get("status") == "exito":
         render_package_result(result)
+        render_json_download(
+            result,
+            titulo_documento=st.session_state.get("document_title"),
+            archivo_origen=st.session_state.get("source_filename"),
+        )
 
 st.markdown(
     f'<div class="api-footnote"><span class="status-dot"></span> API · {API_BASE_URL}</div>',
