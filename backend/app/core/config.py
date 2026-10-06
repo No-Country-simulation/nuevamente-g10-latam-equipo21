@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     RETRIEVAL_SCORE_THRESHOLD: float = 0.35
     RETRIEVAL_MAX_CONTEXT_TOKENS: int = 2000
 
+    # Cobertura del documento completo en la recuperación (NM-22)
+    RETRIEVAL_MAX_VENTANAS: int = 5
+    RETRIEVAL_VENTANA_CHARS: int = 2000
+
     # Verificación de fidelidad (NM-09)
     FIDELITY_SCORE_THRESHOLD: float = 0.7
 
