@@ -133,3 +133,57 @@ def test_api_error_is_displayed_without_clearing_form_selections(monkeypatch):
 	assert any("Servicio no disponible" in error.value for error in app.error)
 	assert not app.button[0].disabled
 	assert app.selectbox[0].value == "Principiante"
+
+
+def test_generation_forwards_extracted_pages(monkeypatch):
+	calls = []
+	responses = [
+		FakeResponse(
+			{
+				"text": "Texto fuente",
+				"metadata": {},
+				"pages": [
+					{"page_number": 1, "text": "Pagina uno"},
+					{"page_number": 2, "text": "Pagina dos"},
+				],
+			}
+		),
+		FakeResponse({"status": "exito", "mensaje": "Contenido listo"}),
+	]
+
+	def fake_request(method, url, **kwargs):
+		calls.append((method, url, kwargs))
+		return responses.pop(0)
+
+	monkeypatch.setattr(requests, "request", fake_request)
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.pdf", b"%PDF-1.4", "application/pdf"))
+	app.run()
+	app.button[0].click()
+	app.run()
+
+	assert calls[1][2]["json"]["documento_paginas"] == [
+		{"page_number": 1, "text": "Pagina uno"},
+		{"page_number": 2, "text": "Pagina dos"},
+	]
+
+
+def test_generation_without_pages_omits_documento_paginas(monkeypatch):
+	calls = []
+	responses = [
+		FakeResponse({"text": "Texto fuente", "metadata": {}, "pages": []}),
+		FakeResponse({"status": "exito", "mensaje": "Contenido listo"}),
+	]
+
+	def fake_request(method, url, **kwargs):
+		calls.append((method, url, kwargs))
+		return responses.pop(0)
+
+	monkeypatch.setattr(requests, "request", fake_request)
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click()
+	app.run()
+
+	assert "documento_paginas" not in calls[1][2]["json"]
