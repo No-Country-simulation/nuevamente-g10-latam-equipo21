@@ -1,7 +1,7 @@
 import json
 from typing import List, Literal, Union
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -78,5 +78,29 @@ class Settings(BaseSettings):
     OCI_KEY_FILE: str = ""
     OCI_KEY_PASSPHRASE: SecretStr | None = None
 
+    @model_validator(mode="after")
+    def validate_required_configuration(self):
+        """
+        Valida la configuración mínima necesaria para ejecutar
+        el pipeline real.
+        """
+        if self.USE_MOCK_LLM:
+            return self
+
+        missing = []
+
+        if not self.GEMINI_API_KEY.strip():
+            missing.append("GEMINI_API_KEY")
+
+        if not self.OCI_NAMESPACE.strip():
+            missing.append("OCI_NAMESPACE")
+
+        if missing:
+            raise ValueError(
+                "Faltan variables de configuración obligatorias "
+                f"cuando USE_MOCK_LLM=false: {', '.join(missing)}"
+            )
+
+        return self
 
 settings = Settings()
