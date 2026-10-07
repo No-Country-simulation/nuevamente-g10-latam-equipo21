@@ -5,10 +5,13 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from components.file_uploader import render_file_uploader
+from components.error_display import render_error
+from components.loading_indicator import loading_indicator
 from components.package_result import render_package_result
 from components.sidebar import render_adaptation_options
 from services.api_client import APIClientError, adapt_document, extract_document
 from components.download_json import render_json_download
+from utils.session_state import init_session_state
 
 
 FRONTEND_DIR = Path(__file__).resolve().parent
@@ -18,12 +21,30 @@ API_BASE_URL = os.getenv(
     "http://localhost:8000/api/v1",
 ).rstrip("/")
 
+
+def _timeout_from_environment(name: str, default: int) -> int:
+    value = os.getenv(name, str(default))
+    try:
+        timeout = int(value)
+    except ValueError as error:
+        raise ValueError(f"{name} debe ser un entero positivo.") from error
+    if timeout <= 0:
+        raise ValueError(f"{name} debe ser un entero positivo.")
+    return timeout
+
+
+API_TIMEOUT = (
+    _timeout_from_environment("API_CONNECT_TIMEOUT_SECONDS", 5),
+    _timeout_from_environment("API_READ_TIMEOUT_SECONDS", 180),
+)
+
 st.set_page_config(
     page_title="NuevaMente | Adaptación educativa",
     page_icon="N",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+init_session_state()
 
 
 def load_styles() -> None:
@@ -35,12 +56,17 @@ def load_styles() -> None:
         )
 
 
-def run_adaptation(uploaded_file, title: str, options: dict[str, str]) -> dict:
+def run_adaptation(
+    uploaded_file,
+    title: str,
+    options: dict[str, str],
+) -> dict:
     extracted = extract_document(
         api_base_url=API_BASE_URL,
         file_name=uploaded_file.name,
         file_content=uploaded_file.getvalue(),
         content_type=uploaded_file.type,
+        timeout=API_TIMEOUT,
     )
     content = extracted.get("text", "")
     if not content.strip():
@@ -51,7 +77,11 @@ def run_adaptation(uploaded_file, title: str, options: dict[str, str]) -> dict:
         "documento_contenido": content,
         **options,
     }
-    return adapt_document(api_base_url=API_BASE_URL, payload=payload)
+    return adapt_document(
+        api_base_url=API_BASE_URL,
+        payload=payload,
+        timeout=API_TIMEOUT,
+    )
 
 
 load_styles()
@@ -66,6 +96,8 @@ has_source_document = (
 options = render_adaptation_options(
     has_source_document=has_source_document,
 )
+st.session_state["loaded_document"] = source_document
+st.session_state["selected_parameters"] = options.copy()
 
 st.markdown(
     """
@@ -121,8 +153,9 @@ if submitted:
     elif len(document_title.strip()) < 3:
         st.warning("El título debe tener al menos 3 caracteres.")
     else:
+        st.session_state["is_loading"] = True
         try:
-            with st.spinner(
+            with loading_indicator(
                 "Extrayendo el documento y preparando el material..."
             ):
                 result = run_adaptation(
@@ -133,39 +166,36 @@ if submitted:
 
             if result.get("status") != "exito":
                 error = result.get("error")
-                message = (
-                    error.get("mensaje") if isinstance(error, dict) else None
-                )
-                raise APIClientError(
-                    message or "No se pudo completar la adaptación."
-                )
-
-            st.session_state["adaptation_result"] = result
-            st.session_state["document_title"] = document_title.strip()
-            st.session_state["source_filename"] = uploaded_file.name
-            st.session_state["generated_options"] = options.copy()
-            st.success("El contenido educativo se generó correctamente.")
+                if not isinstance(error, dict):
+                    error = {
+                        "mensaje": "No se pudo completar la adaptación."
+                    }
+                render_error(error)
+            else:
+                st.session_state["last_response"] = result
+                st.session_state["document_title"] = document_title.strip()
+                st.session_state["source_filename"] = uploaded_file.name
+                st.success("El contenido educativo se generó correctamente.")
 
         except APIClientError as error:
-            st.error(str(error))
+            render_error(error.error)
+        finally:
+            st.session_state["is_loading"] = False
 
-result = st.session_state.get("adaptation_result")
+result = st.session_state.get("last_response")
 
-if result:
-    if result.get("status") == "error":
-        st.error(
-            result.get("error", {}).get(
-                "mensaje",
-                "No se pudo completar la adaptación.",
-            )
-        )
-    elif result.get("status") == "exito":
+st.divider()
+st.subheader("Resultados")
+if result and result.get("status") == "exito":
+    with st.container():
         render_package_result(result)
         render_json_download(
             result,
             titulo_documento=st.session_state.get("document_title"),
             archivo_origen=st.session_state.get("source_filename"),
         )
+else:
+    st.caption("El contenido generado aparecerá aquí después de la adaptación.")
 
 st.markdown(
     f'<div class="api-footnote"><span class="status-dot"></span> API · {API_BASE_URL}</div>',
