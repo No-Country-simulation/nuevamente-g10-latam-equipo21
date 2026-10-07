@@ -8,6 +8,7 @@ def init_session_state() -> None:
         "loaded_document": None,
         "selected_parameters": {},
         "last_response": None,
+        "document_title": None,
         "is_loading": False,
         "source_filename": None,
     }
