@@ -83,6 +83,7 @@ el frontend aún no está implementado en `develop`.
 {
   "documento_titulo": "string",
   "documento_contenido": "string",
+  "documento_paginas": ["{ page_number: number, text: string } (opcional)"],
   "perfil_destinatario": "enum",
   "formato_salida": "enum",
   "nicho_sector": "enum",
@@ -104,6 +105,12 @@ el frontend aún no está implementado en `develop`.
 > Nota: los valores enum usan exactamente los identificadores publicados en este contrato, sin
 > espacios ni acentos. El frontend puede mapearlos a etiquetas legibles sin cambiar el valor que
 > intercambia con la API.
+
+> `documento_paginas` (opcional, NM-23): lista de páginas del documento de origen
+> (`{"page_number": number, "text": string}`, 1-indexadas). Cuando se envía, cada fragmento
+> indexado conserva su página real y la respuesta puede citarla; si se omite, todo el texto se
+> indexa como página 1 (comportamiento previo). El endpoint `POST /api/v1/documents/extract` ya
+> devuelve `pages` con este formato para que el cliente pueda reenviarlas.
 
 ---
 
