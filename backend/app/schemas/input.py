@@ -1,4 +1,4 @@
-from pydantic import Field, StrictStr
+from pydantic import Field, StrictInt, StrictStr
 
 from app.schemas.base import PublicSchema
 from app.schemas.enums import (
@@ -7,6 +7,19 @@ from app.schemas.enums import (
     NivelDetalle,
     PerfilDestinatario,
 )
+
+class DocumentoPaginaSchema(PublicSchema):
+    page_number: StrictInt = Field(
+        ...,
+        ge=1,
+        description="Número de página de origen (1-indexado)",
+    )
+
+    text: StrictStr = Field(
+        ...,
+        min_length=1,
+        description="Texto extraído de esa página",
+    )
 
 
 class InputSchema(PublicSchema):
@@ -20,6 +33,14 @@ class InputSchema(PublicSchema):
         ...,
         min_length=10,
         description="Contenido del documento técnico que será adaptado",
+    )
+
+    documento_paginas: list[DocumentoPaginaSchema] | None = Field(
+        default=None,
+        description=(
+            "Páginas del documento de origen, si se conocen. Permite preservar la "
+            "trazabilidad de página de los fragmentos recuperados."
+        ),
     )
 
     perfil_destinatario: PerfilDestinatario = Field(

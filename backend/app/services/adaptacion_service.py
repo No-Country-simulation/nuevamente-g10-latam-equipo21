@@ -126,22 +126,38 @@ class AdaptacionService:
         except Exception as exc:
             logger.error(
                 "[%s] falla en paso '%s' | %s",
-                get_request_id(), nombre, error_sanitizado(exc),
+                get_request_id(),
+                nombre,
+                error_sanitizado(exc),
             )
             raise error_cls() from exc
 
-    def _persistir(self, payload, metadatos, contenido, evaluacion) -> AlmacenamientoOCISchema:
+    def _persistir(
+        self,
+        payload,
+        metadatos,
+        contenido,
+        evaluacion,
+    ) -> AlmacenamientoOCISchema:
         paquete = {
             "metadatos": metadatos.model_dump(mode="json"),
             "contenido_adaptado": contenido.model_dump(mode="json"),
             "evaluacion_calidad": evaluacion.model_dump(mode="json"),
         }
+
         try:
             return self._storage.guardar(payload, paquete)
+
+        except AppError:
+            # Los errores de dominio tipados, como autenticación OCI,
+            # deben llegar al handler global y ser visibles para el cliente.
+            raise
+
         except Exception as exc:
             logger.error(
                 "[%s] falla al subir a OCI (no invalida la respuesta) | %s",
-                get_request_id(), error_sanitizado(exc),
+                get_request_id(),
+                error_sanitizado(exc),
             )
             return AlmacenamientoOCISchema(
                 bucket=settings.OCI_BUCKET_NAME,

@@ -75,6 +75,38 @@ def test_endpoint_rechaza_campo_desconocido_e_indica_su_nombre():
 
 
 @pytest.mark.parametrize(
+    "pagina",
+    [
+        {"page_number": "1", "text": "Página uno"},
+        {"page_number": 1, "text": 123},
+        {"page_number": 1, "text": "Página uno", "campo_desconocido": True},
+    ],
+)
+def test_documento_paginas_rechaza_tipos_y_campos_invalidos(pagina):
+    payload = {
+        **REQUEST_BRIEF,
+        "documento_paginas": [pagina],
+    }
+
+    with pytest.raises(ValidationError):
+        InputSchema.model_validate(payload)
+
+
+def test_documento_paginas_estricto_sigue_aceptando_el_contrato_valido():
+    payload = {
+        **REQUEST_BRIEF,
+        "documento_paginas": [
+            {"page_number": 1, "text": "Página uno"},
+            {"page_number": 2, "text": "Página dos"},
+        ],
+    }
+
+    entrada = InputSchema.model_validate(payload)
+
+    assert [pagina.page_number for pagina in entrada.documento_paginas or []] == [1, 2]
+
+
+@pytest.mark.parametrize(
     ("ruta", "valor"),
     [
         (("metadatos", "tiempo_estimado_estudio_minutos"), "5"),
