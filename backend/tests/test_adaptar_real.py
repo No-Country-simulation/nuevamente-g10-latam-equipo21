@@ -212,13 +212,34 @@ def _payload():
     return SimpleNamespace(documento_titulo="Titulo", documento_contenido="contenido largo " * 5)
 
 def test_contexto_indexa_si_no_existe_y_arma_fuentes():
-    frag = SimpleNamespace(chunk_id="c9", score=0.8, metadatos={"page_number": 3})
+    frag = SimpleNamespace(chunk_id="c9", score=0.8, metadatos={"pagina": 3})
     chroma = FakeChroma(0)
     a, ll = _adapter(chroma, [frag])
     ctx = a.obtener_contexto(_payload())
     assert chroma.indexados and ll["c"][1] == [{"page_number": 1, "text": _payload().documento_contenido}]
     assert ctx.texto == "TEXTO 1" and ctx.fuentes[0].pagina == 3
     assert ll["r"][1] == documento_id_desde_contenido(_payload().documento_contenido)
+
+
+def test_contexto_indexa_con_las_paginas_reales_del_payload():
+    """Con `documento_paginas`, el chunker recibe las páginas reales y `pagina` refleja el origen."""
+    frag = SimpleNamespace(chunk_id="c9", score=0.8, metadatos={"pagina": 2})
+    chroma = FakeChroma(0)
+    a, ll = _adapter(chroma, [frag])
+    payload = SimpleNamespace(
+        documento_titulo="Titulo",
+        documento_contenido="contenido largo " * 5,
+        documento_paginas=[
+            SimpleNamespace(page_number=1, text="pagina uno"),
+            SimpleNamespace(page_number=2, text="pagina dos"),
+        ],
+    )
+    ctx = a.obtener_contexto(payload)
+    assert ll["c"][1] == [
+        {"page_number": 1, "text": "pagina uno"},
+        {"page_number": 2, "text": "pagina dos"},
+    ]
+    assert ctx.fuentes[0].pagina == 2
 
 def test_contexto_no_reindexa_si_ya_existe_y_vacio_sin_fragmentos():
     chroma = FakeChroma(4)

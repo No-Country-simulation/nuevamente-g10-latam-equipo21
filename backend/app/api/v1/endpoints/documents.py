@@ -71,6 +71,7 @@ async def extract_document_endpoint(
         return {
             "text": document.text,
             "metadata": asdict(metadata),
+            "pages": [asdict(pagina) for pagina in document.pages],
         }
     except DocumentExtractionError as error:
         raise HTTPException(

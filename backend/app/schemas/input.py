@@ -7,6 +7,20 @@ from app.schemas.enums import (
     PerfilDestinatario,
 )
 
+class DocumentoPaginaSchema(BaseModel):
+    page_number: int = Field(
+        ...,
+        ge=1,
+        description="Número de página de origen (1-indexado)",
+    )
+
+    text: str = Field(
+        ...,
+        min_length=1,
+        description="Texto extraído de esa página",
+    )
+
+
 class InputSchema(BaseModel):
     documento_titulo: str = Field(
         ...,
@@ -20,7 +34,13 @@ class InputSchema(BaseModel):
         description="Contenido del documento técnico que será adaptado",
     )
 
-
+    documento_paginas: list[DocumentoPaginaSchema] | None = Field(
+        default=None,
+        description=(
+            "Páginas del documento de origen, si se conocen. Permite preservar la "
+            "trazabilidad de página de los fragmentos recuperados."
+        ),
+    )
 
     perfil_destinatario: PerfilDestinatario = Field(
         ...,

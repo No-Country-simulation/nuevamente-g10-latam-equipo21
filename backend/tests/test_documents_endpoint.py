@@ -58,6 +58,7 @@ def test_extract_document_endpoint_returns_text_and_metadata():
             "character_count": len("# Lesson\n\nContent."),
             "page_count": None,
         },
+        "pages": [],
     }
 
 
@@ -92,6 +93,7 @@ def test_extract_document_endpoint_continues_when_storage_factory_fails(
             "character_count": len("# Lesson\n\nContent."),
             "page_count": None,
         },
+        "pages": [],
     }
 
     assert "ValueError" in caplog.text

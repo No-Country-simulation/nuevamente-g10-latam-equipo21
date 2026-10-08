@@ -53,6 +53,17 @@ def construir_consulta(titulo: str, contenido: str) -> str:
     return f"{titulo}\n{contenido[:CONSULTA_MAX_CHARS]}"
 
 
+def _paginas_para_indexar(payload) -> list[dict]:
+    """Páginas reales del origen si el payload las trae; si no, todo el texto como página 1.
+
+    Preservar las páginas permite que cada chunk conserve su página de origen (NM-23).
+    """
+    paginas = getattr(payload, "documento_paginas", None)
+    if paginas:
+        return [{"page_number": pagina.page_number, "text": pagina.text} for pagina in paginas]
+    return [{"page_number": 1, "text": payload.documento_contenido}]
+
+
 def calcular_num_ventanas(longitud: int) -> int:
     """Cantidad de secciones sobre las que se consulta el documento (NM-22).
 
@@ -146,7 +157,7 @@ class ContextoRealAdapter:
         if self._store.count_document(doc_id) == 0:
             chunks = self._chunker(
                 document_id=doc_id,
-                pages=[{"page_number": 1, "text": payload.documento_contenido}],
+                pages=_paginas_para_indexar(payload),
             )
             self._store.index_chunks(chunks)
 
@@ -163,7 +174,7 @@ class ContextoRealAdapter:
         fuentes = [
             FuenteContexto(
                 chunk_id=f.chunk_id,
-                pagina=(f.metadatos or {}).get("page_number"),
+                pagina=(f.metadatos or {}).get("pagina"),
                 score=f.score,
             )
             for f in fragmentos

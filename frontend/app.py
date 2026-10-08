@@ -77,6 +77,9 @@ def run_adaptation(
         "documento_contenido": content,
         **options,
     }
+    pages = extracted.get("pages") or []
+    if pages:
+        payload["documento_paginas"] = pages
     return adapt_document(
         api_base_url=API_BASE_URL,
         payload=payload,
