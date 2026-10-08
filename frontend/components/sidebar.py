@@ -43,7 +43,7 @@ def _select_option(field: str, label: str, default: str, *, disabled: bool) -> s
 def render_adaptation_options(*, has_source_document: bool) -> dict[str, str]:
 	with st.sidebar:
 		st.markdown('<div class="sidebar-brand">N<span>·</span>M</div>', unsafe_allow_html=True)
-		st.markdown("### Diseño del recurso")
+		st.markdown("### Parámetros del recurso")
 		st.caption("Configura a quién va dirigido y cómo presentarlo.")
 		disabled = not has_source_document
 		profile = _select_option("perfil_destinatario", "Perfil destinatario", "Principiante", disabled=disabled)

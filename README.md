@@ -230,6 +230,37 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 
 No compartas el archivo `.env`, `~/.oci/config`, claves `.pem` ni credenciales reales.
 
+### Validación de configuración al iniciar
+
+Cuando `USE_MOCK_LLM=false`, el backend valida la configuración del pipeline real al arrancar. Deben estar definidas como mínimo:
+
+- `GEMINI_API_KEY`
+- `OCI_NAMESPACE`
+
+Si alguna falta, la aplicación no inicia y el mensaje de configuración identifica la variable ausente.
+
+`OCI_AUTH_MODE` mantiene `instance_principal` como valor predeterminado para el despliegue en OCI Compute.
+
+Para desarrollo local con credenciales de usuario:
+
+```dotenv
+USE_MOCK_LLM=false
+GEMINI_API_KEY=tu_api_key
+OCI_NAMESPACE=tu_namespace
+OCI_AUTH_MODE=api_key
+```
+
+Para una VM de OCI Compute:
+
+```dotenv
+USE_MOCK_LLM=false
+GEMINI_API_KEY=tu_api_key
+OCI_NAMESPACE=tu_namespace
+OCI_AUTH_MODE=instance_principal
+```
+
+En la VM no deben copiarse `OCI_USER_OCID`, `OCI_TENANCY_OCID`, `OCI_FINGERPRINT` ni claves privadas cuando se utiliza `instance_principal`.
+
 ## Configuración de OCI Object Storage
 
 1. Seleccionar la región donde se ejecutará el proyecto; el entorno actual utiliza São Paulo (`sa-saopaulo-1`).
@@ -243,7 +274,11 @@ No compartas el archivo `.env`, `~/.oci/config`, claves `.pem` ni credenciales r
 
 Para despliegues sobre una instancia de OCI debe utilizarse la autenticación mediante principal de instancia, evitando claves de usuario almacenadas en el servidor.
 
-NM-11 proporciona la carga del documento original y del paquete generado. Su adaptador ya está conectado al pipeline integral de NM-12. Si OCI falla, la generación no se descarta: el endpoint conserva HTTP 200 y devuelve `almacenamiento_oci.status_upload="error"`.
+NM-11 proporciona la carga del documento original y del paquete generado. Su adaptador ya está conectado al pipeline integral de NM-12.
+
+Las fallas normales de persistencia en OCI no descartan el contenido generado: el endpoint conserva HTTP 200 y devuelve `almacenamiento_oci.status_upload="error"`.
+
+Las fallas de autenticación o autorización contra OCI se consideran errores de configuración o credenciales y se devuelven al cliente como HTTP 502 con el código `OCI_AUTENTICACION_ERROR`, sin exponer credenciales ni detalles sensibles.
 
 ## Despliegue en OCI Compute
 
