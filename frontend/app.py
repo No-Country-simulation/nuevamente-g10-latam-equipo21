@@ -10,6 +10,7 @@ from components.loading_indicator import loading_indicator
 from components.package_result import render_package_result
 from components.sidebar import render_adaptation_options
 from services.api_client import APIClientError, adapt_document, extract_document
+from components.download_json import render_json_download
 from utils.session_state import init_session_state
 
 
@@ -172,6 +173,7 @@ if submitted:
                 render_error(error)
             else:
                 st.session_state["last_response"] = result
+                st.session_state["document_title"] = document_title.strip()
                 st.session_state["source_filename"] = uploaded_file.name
                 st.success("El contenido educativo se generó correctamente.")
 
@@ -187,6 +189,11 @@ st.subheader("Resultados")
 if result and result.get("status") == "exito":
     with st.container():
         render_package_result(result)
+        render_json_download(
+            result,
+            titulo_documento=st.session_state.get("document_title"),
+            archivo_origen=st.session_state.get("source_filename"),
+        )
 else:
     st.caption("El contenido generado aparecerá aquí después de la adaptación.")
 
