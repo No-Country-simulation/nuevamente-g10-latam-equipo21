@@ -19,6 +19,7 @@ Quien consuma la respuesta debe decidir por status_upload, nunca por objeto_id.
 """
 
 import hashlib
+import math
 import logging
 from functools import lru_cache
 
@@ -50,6 +51,36 @@ def documento_id_desde_contenido(contenido: str) -> str:
 
 def construir_consulta(titulo: str, contenido: str) -> str:
     return f"{titulo}\n{contenido[:CONSULTA_MAX_CHARS]}"
+
+
+def calcular_num_ventanas(longitud: int) -> int:
+    """Cantidad de secciones sobre las que se consulta el documento (NM-22).
+
+    Hasta RETRIEVAL_VENTANA_CHARS se usa una sola consulta (comportamiento original):
+    un documento así tiene pocos chunks y el top_k ya lo cubre. Más allá, una ventana
+    por cada RETRIEVAL_VENTANA_CHARS, con tope en RETRIEVAL_MAX_VENTANAS.
+    """
+    if longitud <= settings.RETRIEVAL_VENTANA_CHARS:
+        return 1
+    tope = max(1, settings.RETRIEVAL_MAX_VENTANAS)
+    return min(tope, math.ceil(longitud / settings.RETRIEVAL_VENTANA_CHARS))
+
+
+def dividir_en_ventanas(contenido: str, cantidad: int) -> list[str]:
+    """Divide el contenido en `cantidad` secciones contiguas de largo similar."""
+    if cantidad <= 1:
+        return [contenido]
+    tamano = math.ceil(len(contenido) / cantidad)
+    ventanas = [contenido[i * tamano:(i + 1) * tamano] for i in range(cantidad)]
+    return [v for v in ventanas if v.strip()]
+
+
+def construir_consultas(titulo: str, contenido: str) -> list[str]:
+    """Una consulta por sección: título + primeros CONSULTA_MAX_CHARS de cada una."""
+    cantidad = calcular_num_ventanas(len(contenido))
+    if cantidad == 1:
+        return [construir_consulta(titulo, contenido)]
+    return [construir_consulta(titulo, v) for v in dividir_en_ventanas(contenido, cantidad)]
 
 
 class ContextoRealAdapter:
@@ -84,6 +115,29 @@ class ContextoRealAdapter:
         self._init_real()
         return self._vector_store
 
+    def _recuperar_por_ventanas(self, consultas: list[str], doc_id: str) -> list:
+        """Recupera por sección y une sin duplicados, en orden de documento (NM-22).
+
+        El top_k global se reparte entre las secciones (mínimo 1 por sección), de modo
+        que el total de fragmentos queda en max(RETRIEVAL_TOP_K, secciones) y entra en
+        RETRIEVAL_MAX_CONTEXT_TOKENS sin que ensamblar_contexto corte los últimos.
+        """
+        por_ventana = max(1, settings.RETRIEVAL_TOP_K // len(consultas))
+        vistos: set[str] = set()
+        unidos = []
+        for consulta in consultas:
+            for fragmento in self._recuperar(
+                consulta=consulta,
+                vector_store=self._vector_store,
+                documento_id=doc_id,
+                top_k=por_ventana,
+            ):
+                if fragmento.chunk_id in vistos:
+                    continue
+                vistos.add(fragmento.chunk_id)
+                unidos.append(fragmento)
+        return unidos
+
     def obtener_contexto(self, payload) -> ContextoRecuperado:
         self._init_real()
         doc_id = documento_id_desde_contenido(payload.documento_contenido)
@@ -96,11 +150,15 @@ class ContextoRealAdapter:
             )
             self._store.index_chunks(chunks)
 
-        fragmentos = self._recuperar(
-            consulta=construir_consulta(payload.documento_titulo, payload.documento_contenido),
-            vector_store=self._vector_store,
-            documento_id=doc_id,
-        )
+        consultas = construir_consultas(payload.documento_titulo, payload.documento_contenido)
+        if len(consultas) == 1:
+            fragmentos = self._recuperar(
+                consulta=consultas[0],
+                vector_store=self._vector_store,
+                documento_id=doc_id,
+            )
+        else:
+            fragmentos = self._recuperar_por_ventanas(consultas, doc_id)
         texto = self._ensamblar(fragmentos) if fragmentos else ""
         fuentes = [
             FuenteContexto(
