@@ -261,3 +261,8 @@ Prefijos: `feat`, `fix`, `docs`, `chore`, `test`, `refactor`.
 - [ ] Selección del flujo multi-agente desde el endpoint integral.
 - [x] Frontend Streamlit conectado al contrato de la API.
 - [x] Despliegue completo de FastAPI y Streamlit sobre OCI Compute.
+- [ ] Vínculo persistente entre el documento original y el paquete generado (NM-27).
+- [ ] Contrato uniforme de errores para todos los endpoints (NM-21).
+- [ ] Escenarios, guion y ensayo de la demostración final (NM-17).
+- [ ] Integración final de `develop` en `main`, tag y limpieza de ramas (NM-26).
+- [ ] Funcionalidades opcionales NM-D3, NM-D4 y NM-D5.
