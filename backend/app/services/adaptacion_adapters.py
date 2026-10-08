@@ -24,6 +24,7 @@ from functools import lru_cache
 
 from app.core.config import settings
 from app.core.errors import PipelineNoConfiguradaError
+from app.services.chunking import TextChunk
 from app.schemas.output import (
     AlmacenamientoOCISchema,
     ContenidoAdaptadoSchema,
@@ -92,9 +93,33 @@ class ContextoRealAdapter:
         if self._store.count_document(doc_id) == 0:
             chunks = self._chunker(
                 document_id=doc_id,
-                pages=[{"page_number": 1, "text": payload.documento_contenido}],
+                pages=[
+                    {
+                        "page_number": 1,
+                        "text": payload.documento_contenido,
+                    }
+                ],
             )
+
+            diagramas = getattr(payload, "diagramas", [])
+
+            for diagrama in diagramas:
+                chunks.append(
+                    TextChunk(
+                        document_id=doc_id,
+                        chunk_index=len(chunks),
+                        text=diagrama.description,
+                        page_number=diagrama.page_number,
+                        char_start=0,
+                        char_end=len(diagrama.description),
+                        source_type="diagram",
+                        image_index=diagrama.image_index,
+                        image_name=diagrama.image_name,
+                    )
+                )
+
             self._store.index_chunks(chunks)
+
 
         fragmentos = self._recuperar(
             consulta=construir_consulta(payload.documento_titulo, payload.documento_contenido),

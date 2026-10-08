@@ -2,6 +2,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
@@ -65,6 +66,35 @@ def test_extracts_pdf_pages_in_reading_order(tmp_path: Path):
     assert document.metadata.page_count == 2
 
 
+def test_extracts_pdf_image_with_origin_position(tmp_path: Path):
+    source = tmp_path / "diagram.pdf"
+
+    image = Image.new("RGB", (20, 20), "white")
+    image.save(source, format="PDF")
+
+    reader = PdfReader(str(source))
+    page = reader.pages[0]
+
+    writer = PdfWriter()
+    page.merge_page(_pdf_page("Diagram example"))
+    writer.add_page(page)
+
+    with source.open("wb") as file:
+        writer.write(file)
+
+    document = extract_document(source)
+
+    assert document.text == "Diagram example"
+    assert len(document.images) == 1
+
+    extracted_image = document.images[0]
+
+    assert extracted_image.page_number == 1
+    assert extracted_image.image_index == 1
+    assert extracted_image.data
+    assert extracted_image.mime_type.startswith("image/")
+
+    
 def _pdf_bytes(content: str) -> bytes:
     writer = PdfWriter()
     writer.add_page(_pdf_page(content))

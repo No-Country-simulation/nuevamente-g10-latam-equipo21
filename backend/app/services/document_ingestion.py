@@ -34,11 +34,23 @@ class DocumentMetadata:
 
 
 @dataclass(frozen=True)
+class ExtractedImage:
+    """Imagen extraída de un PDF con su posición de origen."""
+
+    data: bytes
+    name: str
+    page_number: int
+    image_index: int
+    mime_type: str
+
+
+@dataclass(frozen=True)
 class ExtractedDocument:
     """Texto normalizado del documento y sus metadatos de origen.."""
 
     text: str
     metadata: DocumentMetadata
+    images: tuple[ExtractedImage, ...] = ()
 
 
 def extract_document(file_path: str | Path) -> ExtractedDocument:
@@ -54,10 +66,11 @@ def extract_document(file_path: str | Path) -> ExtractedDocument:
         )
 
     if document_format == "pdf":
-        text, page_count = _extract_pdf(path)
+        text, page_count, images = _extract_pdf(path)
     else:
         text = _read_text(path)
         page_count = None
+        images = ()
 
     normalized_text = _normalize_text(text)
     metadata = DocumentMetadata(
@@ -66,18 +79,53 @@ def extract_document(file_path: str | Path) -> ExtractedDocument:
         character_count=len(normalized_text),
         page_count=page_count,
     )
-    return ExtractedDocument(text=normalized_text, metadata=metadata)
+    return ExtractedDocument(
+        text=normalized_text,
+        metadata=metadata,
+        images=images,
+    )
 
 
-def _extract_pdf(path: Path) -> tuple[str, int]:
+def _extract_pdf(path: Path) -> tuple[str, int, tuple[ExtractedImage, ...]]:
     reader = PdfReader(str(path))
-    pages_text = [page.extract_text() or "" for page in reader.pages]
+
+    pages_text: list[str] = []
+    extracted_images: list[ExtractedImage] = []
+
+    for page_number, page in enumerate(reader.pages, start=1):
+        pages_text.append(page.extract_text() or "")
+
+        for image_index, image_file in enumerate(page.images, start=1):
+            suffix = Path(image_file.name).suffix.lower()
+
+            mime_type = {
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".gif": "image/gif",
+                ".webp": "image/webp",
+                ".tif": "image/tiff",
+                ".tiff": "image/tiff",
+            }.get(suffix, "application/octet-stream")
+
+            extracted_images.append(
+                ExtractedImage(
+                    data=image_file.data,
+                    name=image_file.name,
+                    page_number=page_number,
+                    image_index=image_index,
+                    mime_type=mime_type,
+                )
+            )
+
     text = "\n\n".join(pages_text)
+
     if not text.strip():
         raise EmptyPdfTextError(
             f"El PDF '{path.name}' no contiene texto extraíble; OCR está fuera de alcance."
         )
-    return text, len(reader.pages)
+
+    return text, len(reader.pages), tuple(extracted_images)
 
 
 def _read_text(path: Path) -> str:

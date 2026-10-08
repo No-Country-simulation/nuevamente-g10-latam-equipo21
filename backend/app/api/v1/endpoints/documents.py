@@ -11,6 +11,10 @@ from app.services.document_ingestion import (
     DocumentExtractionError,
     extract_document,
 )
+from app.services.diagram_interpretation_service import (
+    DiagramInterpretationService,
+    get_diagram_interpretation_service,
+)
 from app.services.oci_storage_service import (
     OCIStorageService,
     get_oci_storage_service_factory,
@@ -32,6 +36,10 @@ async def extract_document_endpoint(
         Callable[[], OCIStorageService],
         Depends(get_oci_storage_service_factory),
     ],
+    diagram_service: Annotated[
+        DiagramInterpretationService,
+        Depends(get_diagram_interpretation_service),
+    ],
 ):
     """Recibe un documento desde el frontend y retorna le texto extraído y metadatos."""
     suffix = Path(file.filename or "").suffix
@@ -48,6 +56,22 @@ async def extract_document_endpoint(
             document.metadata,
             filename=file.filename or temporary_path.name,
         )
+        diagramas = []
+
+        for image in document.images:
+            interpreted = await run_in_threadpool(
+                diagram_service.interpret,
+                image,
+            )
+
+            diagramas.append(
+                {
+                    "description": interpreted.description,
+                    "page_number": interpreted.page_number,
+                    "image_index": interpreted.image_index,
+                    "image_name": interpreted.image_name,
+                }
+            )
 
         def persist_original() -> None:
             storage_service_factory().upload_original(
@@ -63,10 +87,15 @@ async def extract_document_endpoint(
                 "No se pudo persistir el documento original en OCI (%s); se continúa.",
                 type(error).__name__,
             )
-        return {
+        response = {
             "text": document.text,
             "metadata": asdict(metadata),
         }
+
+        if diagramas:
+            response["diagramas"] = diagramas
+
+        return response
     except DocumentExtractionError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

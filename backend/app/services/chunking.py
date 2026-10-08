@@ -14,6 +14,9 @@ class TextChunk:
     page_number: int
     char_start: int
     char_end: int
+    source_type: str = "text"
+    image_index: int | None = None
+    image_name: str | None = None
 
 
 def chunk_pages(

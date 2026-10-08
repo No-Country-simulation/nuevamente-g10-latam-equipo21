@@ -196,6 +196,44 @@ def test_contexto_indexa_si_no_existe_y_arma_fuentes():
     assert ctx.texto == "TEXTO 1" and ctx.fuentes[0].pagina == 3
     assert ll["r"][1] == documento_id_desde_contenido(_payload().documento_contenido)
 
+def test_contexto_indexa_diagrama_como_chunk_con_origen():
+    chroma = FakeChroma(0)
+    a, _ = _adapter(chroma, [])
+
+    payload = SimpleNamespace(
+        documento_titulo="Arquitectura del sistema",
+        documento_contenido="contenido largo " * 5,
+        diagramas=[
+            SimpleNamespace(
+                description=(
+                    "El diagrama muestra un cliente conectado a una API "
+                    "que se comunica con una base de datos."
+                ),
+                page_number=3,
+                image_index=2,
+                image_name="diagram.png",
+            )
+        ],
+    )
+
+    a.obtener_contexto(payload)
+
+    assert len(chroma.indexados) == 1
+
+    chunks = chroma.indexados[0]
+
+    assert len(chunks) == 2
+
+    diagrama = chunks[1]
+
+    assert diagrama.text.startswith("El diagrama muestra")
+    assert diagrama.source_type == "diagram"
+    assert diagrama.page_number == 3
+    assert diagrama.image_index == 2
+    assert diagrama.image_name == "diagram.png"
+
+
+
 def test_contexto_no_reindexa_si_ya_existe_y_vacio_sin_fragmentos():
     chroma = FakeChroma(4)
     a, _ = _adapter(chroma, [])

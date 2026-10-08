@@ -74,6 +74,12 @@ def _referencia(fragmento: FragmentoRecuperado) -> str:
     for clave in ("pagina", "seccion", "titulo"):
         if clave in fragmento.metadatos:
             partes.append(f"{clave}={fragmento.metadatos[clave]}")
+
+    if fragmento.metadatos.get("source_type") == "diagram":
+        for clave in ("source_type", "image_index", "image_name"):
+            valor = fragmento.metadatos.get(clave)
+            if valor is not None:
+                partes.append(f"{clave}={valor}")
     return "[Fuente: " + " | ".join(partes) + "]"
 
 

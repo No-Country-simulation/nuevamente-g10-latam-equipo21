@@ -7,6 +7,31 @@ from app.schemas.enums import (
     PerfilDestinatario,
 )
 
+class DiagramaSchema(BaseModel):
+    description: str = Field(
+        ...,
+        min_length=1,
+        description="Descripción técnica generada a partir del diagrama",
+    )
+
+    page_number: int = Field(
+        ...,
+        ge=1,
+        description="Página del documento donde se encontró el diagrama",
+    )
+
+    image_index: int = Field(
+        ...,
+        ge=1,
+        description="Posición de la imagen dentro de la página",
+    )
+
+    image_name: str = Field(
+        ...,
+        min_length=1,
+        description="Nombre de la imagen extraída",
+    )
+
 class InputSchema(BaseModel):
     documento_titulo: str = Field(
         ...,
@@ -18,6 +43,11 @@ class InputSchema(BaseModel):
         ...,
         min_length=10,
         description="Contenido del documento técnico que será adaptado",
+    )
+
+    diagramas: list[DiagramaSchema] = Field(
+        default_factory=list,
+        description="Diagramas técnicos interpretados del documento original",
     )
 
 
