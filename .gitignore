@@ -148,7 +148,8 @@ activemq-data/
 *.sage.py
 
 # Environments
-.env
+.env*
+!.env.example
 .envrc
 .venv
 env/
@@ -156,6 +157,11 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# OCI credentials
+.oci/
+*.pem
+*.key
 
 # Spyder project settings
 .spyderproject
@@ -231,4 +237,3 @@ backend/chroma_benchmark_nm05/
 # Comparativa local NM-D1
 chroma_comparativa_nm_d1/
 backend/chroma_comparativa_nm_d1/
-.idea/

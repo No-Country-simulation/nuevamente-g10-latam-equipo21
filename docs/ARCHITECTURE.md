@@ -2,11 +2,11 @@
 
 **Proyecto:** NuevaMente — Sistema Inteligente de Adaptación y Generación de Contenido Educativo
 **Ticket:** NM-01 | **Rol:** Architect | **Bloquea a:** NM-03, NM-05, NM-07, NM-12
-**Estado:** Propuesta para revisión del equipo (Sprint Planning 21/09)
+**Estado:** Arquitectura aprobada e implementada para el MVP de backend
 
-> Este documento cierra las decisiones técnicas transversales del proyecto y publica el contrato
-> que va a consumir todo el resto de los tickets. No incluye implementación de código
-> (fuera de alcance de NM-01).
+> Este documento registra las decisiones técnicas transversales y el contrato compartido por el
+> backend y sus consumidores. Tambien refleja el estado real de implementacion alcanzado por los
+> tickets posteriores a NM-01.
 
 ---
 
@@ -19,12 +19,19 @@ flowchart TD
     C --> D[Generación de Embeddings]
     D --> E[(Vector Store<br/>ChromaDB)]
 
-    F[Usuario define parámetros<br/>perfil / formato / nicho / nivel] --> G[Orquestación]
+    F[Usuario define parámetros<br/>perfil / formato / nicho / nivel] --> G[Orquestación lineal<br/>LangChain]
     E -- retrieval --> G
     G --> H[LLM: Google Gemini]
     H --> I[Evaluación de coherencia<br/>didáctica y anclaje a fuente]
     I --> J[Generación de metadatos<br/>conceptos clave, prerequisitos, tiempo estimado]
     J --> K[Respuesta JSON estructurada]
+
+    E -. flujo experimental .-> A1[Agente Investigador RAG]
+    F -. parámetros .-> A2[Agente Redactor Pedagógico]
+    A1 --> A2
+    A2 --> A3[Agente Crítico / Revisor]
+    A3 -- score bajo y quedan reintentos --> A2
+    A3 -- aprobado o límite alcanzado --> J
 
     B --> L[(OCI Object Storage<br/>documento original)]
     K --> M[(OCI Object Storage<br/>contenido generado)]
@@ -37,19 +44,24 @@ flowchart TD
         H
         I
         J
+        A1
+        A2
+        A3
     end
 
-    subgraph Frontend [Streamlit - Frontend]
+    subgraph Frontend [Streamlit - Frontend planificado]
         F
         N[Visualización de resultados]
     end
 
-    K --> N
+    K -. consumidor pendiente de implementación .-> N
 ```
 
 **Flujo resumido:** ingesta → chunking → embeddings → vector store → recuperación (retrieval) →
 orquestación LLM → evaluación de fidelidad → generación de metadatos → persistencia en OCI →
-respuesta JSON → visualización en Streamlit.
+respuesta JSON. El flujo multi-agente reutiliza retrieval, generación y evaluación, pero todavía
+no está seleccionable desde el endpoint integral. Streamlit permanece como consumidor planificado:
+el frontend aún no está implementado en `develop`.
 
 ---
 
@@ -59,9 +71,9 @@ respuesta JSON → visualización en Streamlit.
 |---|---|---|
 | **LLM** | **Google Gemini** (API, capa gratuita) | Es la referencia trabajada en clase (documentación y ejemplos del programa ya están orientados a Gemini), tiene tier gratuito generoso que evita fricción de costos para un equipo de 9 personas trabajando en paralelo, y buen soporte de structured outputs / function calling para forzar el JSON de salida. Se deja la integración desacoplada (capa `llm_provider`) para poder swapear a Claude/OpenAI sin tocar el resto del pipeline si hace falta. |
 | **Vector Store** | **ChromaDB** | Embebido (no requiere levantar infraestructura aparte, corre local o en la misma instancia), integración directa con LangChain, suficiente para el volumen de un MVP de hackathon. FAISS queda como alternativa si el equipo necesita más performance más adelante. |
-| **Framework de orquestación** | **LangChain** para el MVP (chains simples de retrieval + prompt + parseo) | Es lo recomendado en el brief, tiene curva de entrada más rápida que LangGraph para un flujo lineal (ingesta→respuesta), y el equipo puede evolucionar a **LangGraph** como diferencial opcional (sistema multi-agente: Investigador RAG / Redactor Pedagógico / Crítico) una vez que el MVP lineal esté estable. |
-| **Stack de interfaz** | **FastAPI (backend) + Streamlit (frontend)** | Streamlit ya fue acordado en la demo del martes para la interfaz. Se agrega FastAPI como capa de backend/API REST **para permitir el trabajo en paralelo**: el equipo de frontend puede construir contra el contrato JSON (mockeado) mientras el equipo de backend implementa la pipeline real, sin bloquearse mutuamente. FastAPI además valida los esquemas de entrada/salida con Pydantic, cumpliendo el requisito de "tipado estricto". |
-| **Persistencia** | **OCI Object Storage** (obligatorio) | Un bucket Always Free (`nuevamente-contenidos-educativos`) para documentos originales y JSON generados, vía `oci-sdk` para Python. |
+| **Framework de orquestación** | **LangChain** para el endpoint del MVP y **LangGraph** para el flujo multi-agente experimental | El pipeline lineal es el recorrido estable de la API. LangGraph implementa Investigador RAG, Redactor Pedagógico y Crítico/Revisor con reintentos limitados; su exposición desde el endpoint queda pendiente. |
+| **Stack de interfaz** | **FastAPI (backend) + Streamlit (frontend planificado)** | FastAPI está implementado como API REST y valida los contratos mediante Pydantic. Streamlit sigue siendo la decisión aprobada para la interfaz, pero todavía no existe una implementación de frontend en `develop`. |
+| **Persistencia** | **OCI Object Storage** (obligatorio) | El bucket privado `nuevamente-contenidos-educativos` almacena documentos originales y JSON generados mediante el SDK de OCI para Python. El pipeline real ya utiliza el adaptador de almacenamiento. |
 
 ---
 
@@ -71,6 +83,7 @@ respuesta JSON → visualización en Streamlit.
 {
   "documento_titulo": "string",
   "documento_contenido": "string",
+  "documento_paginas": ["{ page_number: number, text: string } (opcional)"],
   "perfil_destinatario": "enum",
   "formato_salida": "enum",
   "nicho_sector": "enum",
@@ -89,9 +102,15 @@ respuesta JSON → visualización en Streamlit.
 | `nicho_sector` | enum | `"Fintech"` \| `"Salud"` \| `"Ecommerce"` \| `"General"` |
 | `nivel_detalle` | enum | `"Introductorio"` \| `"Didactico"` \| `"Tecnico_Profundo"` |
 
-> Nota: los valores enum se definen en `snake_case` sin espacios ni acentos para que sean estables
-> como constantes en código (frontend, backend y validación Pydantic). El texto legible para el
-> usuario en la UI de Streamlit puede mapear estos valores a las etiquetas del brief original.
+> Nota: los valores enum usan exactamente los identificadores publicados en este contrato, sin
+> espacios ni acentos. El frontend puede mapearlos a etiquetas legibles sin cambiar el valor que
+> intercambia con la API.
+
+> `documento_paginas` (opcional, NM-23): lista de páginas del documento de origen
+> (`{"page_number": number, "text": string}`, 1-indexadas). Cuando se envía, cada fragmento
+> indexado conserva su página real y la respuesta puede citarla; si se omite, todo el texto se
+> indexa como página 1 (comportamiento previo). El endpoint `POST /api/v1/documents/extract` ya
+> devuelve `pages` con este formato para que el cliente pueda reenviarlas.
 
 ---
 
@@ -104,7 +123,8 @@ respuesta JSON → visualización en Streamlit.
     "perfil_aplicado": "string",
     "formato_generado": "string",
     "tiempo_estimado_estudio_minutos": "number",
-    "conceptos_clave": ["string"]
+    "conceptos_clave": ["string"],
+    "prerrequisitos": ["string"]
   },
   "contenido_adaptado": {
     "titulo": "string",
@@ -195,6 +215,16 @@ contenido de cada item.
 
 ---
 
+## 5.1 Selección de contexto para la generación (NM-22)
+
+**Estrategia.** Si el documento mide hasta `RETRIEVAL_VENTANA_CHARS` (2000) caracteres, se hace una sola consulta (título + primeros 500 caracteres), igual que antes. Si es más largo, se divide en hasta `RETRIEVAL_MAX_VENTANAS` (5) secciones contiguas. Cada sección genera su propia consulta (título + sus primeros 500 caracteres) y recupera `RETRIEVAL_TOP_K // secciones` fragmentos, con un mínimo de 1. Los resultados se unen sin duplicados por `chunk_id`, en orden de documento.
+
+**Consumo de tokens.** El contexto que recibe el LLM no crece: el total queda acotado por `max(RETRIEVAL_TOP_K, secciones)` fragmentos (hasta 5 con la configuración por defecto), unos 1400 tokens con chunks de 1000 caracteres, bajo `RETRIEVAL_MAX_CONTEXT_TOKENS` (2000). Como el reparto usa división entera y no redistribuye el resto, con `RETRIEVAL_TOP_K=5` y 2, 3 o 4 secciones se recuperan 4, 3 y 4 fragmentos respectivamente. Lo que aumenta es el consumo de cuota de embeddings de consulta: de 1 a un máximo de 5 llamadas por adaptación.
+
+**Limitación conocida.** Cada sección se representa solo por sus primeros 500 caracteres, así que un tema que aparece únicamente en el medio de una sección puede quedar fuera. Reranking y búsqueda híbrida están fuera de alcance.
+
+---
+
 ## 6. Convención de ramas y commits
 
 **Ramas**
@@ -219,8 +249,13 @@ Prefijos: `feat`, `fix`, `docs`, `chore`, `test`, `refactor`.
 
 ---
 
-## Próximos pasos derivados de este documento
-- [ ] Validar esta propuesta con el equipo en el sprint planning del lunes 21/09.
-- [ ] Publicar este archivo en el repo como `docs/ARCHITECTURE.md`.
-- [ ] Destrabar NM-03 (estructura del commit inicial) una vez aprobado.
-- [ ] Los tickets NM-05, NM-07 y NM-12 pueden asignarse en base a este contrato.
+## Estado de implementación
+
+- [x] Arquitectura y contratos aprobados por el equipo.
+- [x] Backend FastAPI y contratos Pydantic implementados.
+- [x] Pipeline RAG lineal con Gemini, evaluación de fidelidad y metadatos implementado.
+- [x] Persistencia de documentos y paquetes generados integrada con OCI Object Storage.
+- [x] Flujo multi-agente con LangGraph implementado y probado mediante script.
+- [ ] Selección del flujo multi-agente desde el endpoint integral.
+- [ ] Frontend Streamlit conectado al contrato de la API.
+- [ ] Despliegue completo de FastAPI y Streamlit sobre OCI Compute.
