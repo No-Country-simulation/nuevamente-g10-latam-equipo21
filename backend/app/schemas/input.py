@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import Field, StrictInt, StrictStr
 
+from app.schemas.base import PublicSchema
 from app.schemas.enums import (
     FormatoSalida,
     NichoSector,
@@ -7,28 +8,28 @@ from app.schemas.enums import (
     PerfilDestinatario,
 )
 
-class DocumentoPaginaSchema(BaseModel):
-    page_number: int = Field(
+class DocumentoPaginaSchema(PublicSchema):
+    page_number: StrictInt = Field(
         ...,
         ge=1,
         description="Número de página de origen (1-indexado)",
     )
 
-    text: str = Field(
+    text: StrictStr = Field(
         ...,
         min_length=1,
         description="Texto extraído de esa página",
     )
 
 
-class InputSchema(BaseModel):
-    documento_titulo: str = Field(
+class InputSchema(PublicSchema):
+    documento_titulo: StrictStr = Field(
         ...,
         min_length=3,
         description="Título del documento técnico",
     )
 
-    documento_contenido: str = Field(
+    documento_contenido: StrictStr = Field(
         ...,
         min_length=10,
         description="Contenido del documento técnico que será adaptado",
