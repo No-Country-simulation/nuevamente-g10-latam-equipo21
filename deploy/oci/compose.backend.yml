@@ -1,0 +1,98 @@
+name: nuevamente
+
+services:
+  backend:
+    image: ${NUEVAMENTE_BACKEND_IMAGE:?Defina NUEVAMENTE_BACKEND_IMAGE}
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.75
+    mem_limit: 3g
+    pids_limit: 256
+    env_file:
+      - ${NUEVAMENTE_BACKEND_ENV_FILE:-/etc/docker-platform/apps/nuevamente/runtime.env}
+    environment:
+      ENVIRONMENT: production
+      USE_MOCK_LLM: "false"
+      OCI_AUTH_MODE: instance_principal
+      CHROMA_PERSIST_DIRECTORY: /app/chroma_db
+    volumes:
+      - chroma_data:/app/chroma_db
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    expose:
+      - "8000"
+    networks:
+      - backend_internal
+      - proxy
+
+  frontend:
+    image: ${NUEVAMENTE_FRONTEND_IMAGE:?Defina NUEVAMENTE_FRONTEND_IMAGE}
+    restart: unless-stopped
+    init: true
+    user: "10002:10002"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.50
+    mem_limit: 512m
+    pids_limit: 256
+    environment:
+      API_BASE_URL: http://backend:8000/api/v1
+      STREAMLIT_SERVER_HEADLESS: "true"
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    expose:
+      - "8501"
+    networks:
+      - backend_internal
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.nuevamente.entrypoints: web
+      traefik.http.routers.nuevamente.rule: PathPrefix(`/`)
+      traefik.http.services.nuevamente.loadbalancer.server.port: "8501"
+
+volumes:
+  chroma_data:
+    name: nuevamente-chroma-data
+
+networks:
+  backend_internal:
+    name: nuevamente-internal
+    internal: true
+  proxy:
+    external: true
+    name: proxy

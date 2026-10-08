@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.venv/
+__pycache__/
+*.py[cod]
+*.pem
+*.key
+chroma_db/
+scripts/
+tests/
