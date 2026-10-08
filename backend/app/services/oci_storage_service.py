@@ -13,12 +13,25 @@ from typing import Any, Callable, Protocol
 import oci
 
 from app.core.config import Settings, settings
+from app.core.errors import OCIAuthenticationError
 from app.core.request_context import get_request_id
 from app.schemas.input import InputSchema
 from app.schemas.output import AlmacenamientoOCISchema, OutputSchema
 
 
 logger = logging.getLogger(__name__)
+
+def _is_oci_authentication_error(error: Exception) -> bool:
+    """
+    Identifica rechazos de autenticación/autorización devueltos por OCI.
+
+    401: credenciales inválidas o no autenticadas.
+    403: identidad autenticada sin autorización para acceder al recurso.
+    """
+    return (
+        isinstance(error, oci.exceptions.ServiceError)
+        and error.status in {401, 403}
+    )
 
 
 class ObjectStorageClientProtocol(Protocol):
@@ -120,13 +133,17 @@ class OCIStorageService:
                 content_type=content_type,
             )
             status_upload = "completado"
-        except Exception as error:  # El límite OCI debe preservar el contenido generado.
+        except Exception as error:
             logger.error(
                 "Falló la carga del objeto '%s' en OCI Object Storage (%s) [request_id=%s].",
                 object_name,
                 type(error).__name__,
                 get_request_id(),
             )
+
+            if _is_oci_authentication_error(error):
+                raise OCIAuthenticationError() from error
+
             status_upload = "error"
 
         return AlmacenamientoOCISchema(
@@ -155,16 +172,35 @@ def _build_api_key_config(app_settings: Settings) -> dict[str, str]:
         config["pass_phrase"] = app_settings.OCI_KEY_PASSPHRASE.get_secret_value()
     return config
 
-
 def build_object_storage_client(app_settings: Settings) -> ObjectStorageClientProtocol:
     if app_settings.OCI_AUTH_MODE == "instance_principal":
-        signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
-        return oci.object_storage.ObjectStorageClient(config={}, signer=signer)
+        try:
+            signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+            return oci.object_storage.ObjectStorageClient(
+                config={},
+                signer=signer,
+            )
+        except Exception as error:
+            logger.error(
+                "No se pudo autenticar con OCI Object Storage (%s) [request_id=%s].",
+                type(error).__name__,
+                get_request_id(),
+            )
+            raise OCIAuthenticationError() from error
 
+    # Si faltan variables de configuración, conserva el ValueError original.
     config = _build_api_key_config(app_settings)
-    oci.config.validate_config(config)
-    return oci.object_storage.ObjectStorageClient(config)
 
+    try:
+        oci.config.validate_config(config)
+        return oci.object_storage.ObjectStorageClient(config)
+    except Exception as error:
+        logger.error(
+            "No se pudo autenticar con OCI Object Storage (%s) [request_id=%s].",
+            type(error).__name__,
+            get_request_id(),
+        )
+        raise OCIAuthenticationError() from error
 
 def get_oci_storage_service() -> OCIStorageService:
     if not settings.OCI_NAMESPACE:
