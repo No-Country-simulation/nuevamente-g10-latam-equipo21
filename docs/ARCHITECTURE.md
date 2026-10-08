@@ -215,6 +215,16 @@ contenido de cada item.
 
 ---
 
+## 5.1 Selección de contexto para la generación (NM-22)
+
+**Estrategia.** Si el documento mide hasta `RETRIEVAL_VENTANA_CHARS` (2000) caracteres, se hace una sola consulta (título + primeros 500 caracteres), igual que antes. Si es más largo, se divide en hasta `RETRIEVAL_MAX_VENTANAS` (5) secciones contiguas. Cada sección genera su propia consulta (título + sus primeros 500 caracteres) y recupera `RETRIEVAL_TOP_K // secciones` fragmentos, con un mínimo de 1. Los resultados se unen sin duplicados por `chunk_id`, en orden de documento.
+
+**Consumo de tokens.** El contexto que recibe el LLM no crece: el total queda acotado por `max(RETRIEVAL_TOP_K, secciones)` fragmentos (hasta 5 con la configuración por defecto), unos 1400 tokens con chunks de 1000 caracteres, bajo `RETRIEVAL_MAX_CONTEXT_TOKENS` (2000). Como el reparto usa división entera y no redistribuye el resto, con `RETRIEVAL_TOP_K=5` y 2, 3 o 4 secciones se recuperan 4, 3 y 4 fragmentos respectivamente. Lo que aumenta es el consumo de cuota de embeddings de consulta: de 1 a un máximo de 5 llamadas por adaptación.
+
+**Limitación conocida.** Cada sección se representa solo por sus primeros 500 caracteres, así que un tema que aparece únicamente en el medio de una sección puede quedar fuera. Reranking y búsqueda híbrida están fuera de alcance.
+
+---
+
 ## 6. Convención de ramas y commits
 
 **Ramas**

@@ -6,6 +6,7 @@ from typing import Annotated, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
+from app.core.errors import OCIAuthenticationError
 
 from app.services.document_ingestion import (
     DocumentExtractionError,
@@ -58,6 +59,10 @@ async def extract_document_endpoint(
 
         try:
             await run_in_threadpool(persist_original)
+
+        except OCIAuthenticationError:
+            raise
+
         except Exception as error:
             logger.warning(
                 "No se pudo persistir el documento original en OCI (%s); se continúa.",

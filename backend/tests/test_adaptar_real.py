@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
+from app.core.errors import OCIAuthenticationError
 from app.main import create_app
 from app.schemas.content import FlashcardItem
 from app.schemas.output import (
@@ -119,6 +120,29 @@ def test_oci_falla_no_invalida_respuesta():
     assert r.json()["almacenamiento_oci"]["status_upload"] == "error"
     assert r.json()["contenido_adaptado"]["items"]
 
+def test_oci_authentication_failure_is_visible_to_client():
+    """
+    NM-25:
+    una falla de autenticación OCI debe propagarse al cliente
+    en lugar de convertirse en status_upload="error".
+    """
+    c, _ = make_client(
+        storage=FakeStorage(error=OCIAuthenticationError())
+    )
+
+    r = c.post(URL, json=PAYLOAD)
+
+    assert r.status_code == 502
+    assert r.json() == {
+        "status": "error",
+        "error": {
+            "codigo": "OCI_AUTENTICACION_ERROR",
+            "mensaje": (
+                "No fue posible autenticarse con OCI Object Storage. "
+                "Verifica la configuración de credenciales e intenta nuevamente."
+            ),
+        },
+    }
 
 def test_sin_contexto_no_llama_al_llm():
     gen = FakeGenerador(error=AssertionError("no debe llamarse"))
