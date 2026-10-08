@@ -49,19 +49,20 @@ flowchart TD
         A3
     end
 
-    subgraph Frontend [Streamlit - Frontend planificado]
+    subgraph Frontend [Streamlit - Frontend implementado]
         F
         N[Visualización de resultados]
     end
 
-    K -. consumidor pendiente de implementación .-> N
+    K --> N
 ```
 
 **Flujo resumido:** ingesta → chunking → embeddings → vector store → recuperación (retrieval) →
 orquestación LLM → evaluación de fidelidad → generación de metadatos → persistencia en OCI →
 respuesta JSON. El flujo multi-agente reutiliza retrieval, generación y evaluación, pero todavía
-no está seleccionable desde el endpoint integral. Streamlit permanece como consumidor planificado:
-el frontend aún no está implementado en `develop`.
+no está seleccionable desde el endpoint integral. Streamlit está implementado como consumidor de
+los endpoints de extracción y adaptación de FastAPI. En OCI Compute, Traefik publica únicamente
+la interfaz y FastAPI permanece en una red Docker interna.
 
 ---
 
@@ -72,8 +73,9 @@ el frontend aún no está implementado en `develop`.
 | **LLM** | **Google Gemini** (API, capa gratuita) | Es la referencia trabajada en clase (documentación y ejemplos del programa ya están orientados a Gemini), tiene tier gratuito generoso que evita fricción de costos para un equipo de 9 personas trabajando en paralelo, y buen soporte de structured outputs / function calling para forzar el JSON de salida. Se deja la integración desacoplada (capa `llm_provider`) para poder swapear a Claude/OpenAI sin tocar el resto del pipeline si hace falta. |
 | **Vector Store** | **ChromaDB** | Embebido (no requiere levantar infraestructura aparte, corre local o en la misma instancia), integración directa con LangChain, suficiente para el volumen de un MVP de hackathon. FAISS queda como alternativa si el equipo necesita más performance más adelante. |
 | **Framework de orquestación** | **LangChain** para el endpoint del MVP y **LangGraph** para el flujo multi-agente experimental | El pipeline lineal es el recorrido estable de la API. LangGraph implementa Investigador RAG, Redactor Pedagógico y Crítico/Revisor con reintentos limitados; su exposición desde el endpoint queda pendiente. |
-| **Stack de interfaz** | **FastAPI (backend) + Streamlit (frontend planificado)** | FastAPI está implementado como API REST y valida los contratos mediante Pydantic. Streamlit sigue siendo la decisión aprobada para la interfaz, pero todavía no existe una implementación de frontend en `develop`. |
+| **Stack de interfaz** | **FastAPI (backend) + Streamlit (frontend)** | FastAPI expone la API REST y valida los contratos mediante Pydantic. Streamlit permite cargar documentos, seleccionar los ejes de adaptación y consumir la API sin acoplar lógica de negocio a la interfaz. |
 | **Persistencia** | **OCI Object Storage** (obligatorio) | El bucket privado `nuevamente-contenidos-educativos` almacena documentos originales y JSON generados mediante el SDK de OCI para Python. El pipeline real ya utiliza el adaptador de almacenamiento. |
+| **Despliegue** | **OCI Compute + Docker Compose + Traefik** | FastAPI y Streamlit se ejecutan como procesos separados. Solo Streamlit queda expuesto; FastAPI utiliza la red interna. La VM accede a Vault y Object Storage mediante Instance Principal. |
 
 ---
 
@@ -257,5 +259,10 @@ Prefijos: `feat`, `fix`, `docs`, `chore`, `test`, `refactor`.
 - [x] Persistencia de documentos y paquetes generados integrada con OCI Object Storage.
 - [x] Flujo multi-agente con LangGraph implementado y probado mediante script.
 - [ ] Selección del flujo multi-agente desde el endpoint integral.
-- [ ] Frontend Streamlit conectado al contrato de la API.
-- [ ] Despliegue completo de FastAPI y Streamlit sobre OCI Compute.
+- [x] Frontend Streamlit conectado al contrato de la API.
+- [x] Despliegue completo de FastAPI y Streamlit sobre OCI Compute.
+- [ ] Vínculo persistente entre el documento original y el paquete generado (NM-27).
+- [ ] Contrato uniforme de errores para todos los endpoints (NM-21).
+- [ ] Escenarios, guion y ensayo de la demostración final (NM-17).
+- [ ] Integración final de `develop` en `main`, tag y limpieza de ramas (NM-26).
+- [ ] Funcionalidades opcionales NM-D3, NM-D4 y NM-D5.
