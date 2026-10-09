@@ -110,6 +110,9 @@ class ChromaVectorStore:
                         "chunk_index": metadata.get("chunk_index"),
                         "char_start": metadata.get("char_start"),
                         "char_end": metadata.get("char_end"),
+                        "source_type": metadata.get("source_type", "text"),
+                        "image_index": metadata.get("image_index"),
+                        "image_name": metadata.get("image_name"),
                     },
                 )
             )
