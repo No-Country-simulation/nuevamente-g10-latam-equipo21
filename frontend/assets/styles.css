@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800&display=swap');
+
+:root {
+	--ink: #202923;
+	--muted: #66736b;
+	--line: #dce4dd;
+	--paper: #f4f7f3;
+	--leaf: #b8df58;
+	--teal: #087e75;
+	--coral: #e8735b;
+}
+
+.stApp, .stApp *:not([data-testid="stIconMaterial"]) { font-family: "Roboto", Arial, sans-serif !important; }
+.stApp { background: var(--paper); color: var(--ink); }
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stSidebar"] { background: #e9efe9; border-right: 1px solid var(--line); }
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .8rem; }
+[data-testid="stSidebar"] h3 { color: var(--ink); font-size: 1.12rem; }
+[data-testid="stSidebar"] .stCaption { color: var(--muted); }
+[data-testid="stMain"] .block-container { max-width: 1220px; padding-top: 1.2rem; padding-bottom: 4rem; }
+
+.topline { display: flex; align-items: center; gap: .65rem; color: var(--ink); font-size: .72rem; font-weight: 800; }
+.brand-mark { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 8px; background: var(--leaf); font-size: .95rem; }
+.topline-rule { flex: 1; height: 1px; margin: 0 1rem; background: var(--line); }
+.topline-caption, .eyebrow, .section-label, .empty-step, .item-index { color: var(--muted); font-size: .68rem; font-weight: 750; }
+.page-heading { display: flex; justify-content: space-between; align-items: end; padding: 2rem 0 1.4rem; border-bottom: 1px solid var(--line); }
+.page-heading h1 { margin: .25rem 0; color: var(--ink); font-size: 2.4rem; font-weight: 700; letter-spacing: 0; }
+.eyebrow { margin: 0; color: var(--coral); }
+.lede { margin: .4rem 0 0; color: var(--muted); }
+.heading-index { display: grid; grid-template-columns: auto auto; column-gap: .45rem; align-items: baseline; color: var(--teal); }
+.heading-index span { font-size: .68rem; font-weight: 750; }
+.heading-index strong { font-size: 1.9rem; line-height: 1; }
+.heading-index small { grid-column: 1 / -1; color: var(--muted); font-size: .58rem; }
+.sidebar-brand { margin: .6rem 0 1.5rem; color: var(--ink); font-size: 1.15rem; font-weight: 850; letter-spacing: .05em; }
+.sidebar-brand span { color: var(--teal); }
+.sidebar-note { padding-top: .9rem; border-top: 1px solid #ccd8ce; color: var(--muted); font-size: .79rem; line-height: 1.6; }
+.sidebar-note span { color: var(--teal); font-size: .65rem; font-weight: 800; letter-spacing: .08em; }
+.section-label { margin: 1.3rem 0 .55rem; color: var(--teal); }
+.empty-state { display: flex; align-items: center; gap: 1rem; margin: 1.2rem 0 2rem; padding: 1.15rem 1.3rem; border: 1px dashed #aab9ad; border-radius: 8px; background: #fbfcfa; }
+.empty-symbol { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 50%; background: var(--leaf); color: var(--ink); font-size: 1.25rem; }
+.empty-state strong { color: var(--ink); }
+.empty-state p { margin: .2rem 0 0; color: var(--muted); font-size: .88rem; }
+.empty-step { margin-left: auto; white-space: nowrap; }
+.api-footnote { display: flex; align-items: center; gap: .45rem; padding-top: 1.2rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .7rem; overflow-wrap: anywhere; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); }
+.result-label { margin-top: 2rem; }
+.intro-copy { margin: .8rem 0 1.2rem; padding: .9rem 1rem; border-left: 3px solid var(--leaf); background: #eaf1e7; color: #34443a; line-height: 1.65; }
+.item-index { color: var(--teal); }
+[data-testid="stMetric"] { padding: .6rem .75rem; border: 1px solid var(--line); border-radius: 7px; background: #fbfcfa; }
+[data-testid="stMetricLabel"] { color: var(--muted); }
+[data-testid="stMetricValue"] { color: var(--ink); }
+button[kind="primary"], [data-testid="stFormSubmitButton"] button { background: #2563eb; border-color: #2563eb; color: #fff; }
+button[kind="primary"]:hover, [data-testid="stFormSubmitButton"] button:hover { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+
+@media (max-width: 700px) {
+	[data-testid="stMain"] .block-container { padding: .75rem 1rem 2rem; }
+	.topline-caption, .heading-index, .empty-step { display: none; }
+	.page-heading { padding: 1.4rem 0 1rem; }
+	.page-heading h1 { font-size: 1.75rem; }
+	.empty-state { align-items: flex-start; }
+	[data-testid="stMetric"] { margin-bottom: .5rem; }
+}
