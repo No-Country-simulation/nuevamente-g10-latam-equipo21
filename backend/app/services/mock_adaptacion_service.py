@@ -12,14 +12,12 @@ status_upload, y ContenidoAdaptado con titulo + introduccion_contextualizada
 
 Nota: app.schemas.output.ContenidoAdaptadoSchema arma `items` como una unión
 simple de los *Item (FlashcardItem, QuizItem, TutorialItem, ResumenItem,
-GuionItem) — NO discriminada por formato_salida, y NO usa las clases
-FlashcardsContent/QuizContent/etc. de content.py (esas quedaron sin uso).
-Por eso acá se instancia ContenidoAdaptadoSchema directamente, no un
-wrapper por formato.
+GuionItem). OutputSchema valida después que cada item coincida con
+`formato_generado`, sin agregar un discriminador al contrato público.
+Por eso acá se instancia ContenidoAdaptadoSchema directamente.
 
 El campo `tipo_item` (propuesto originalmente en NM-18 como discriminador
-por item) no forma parte del contrato final: no hace falta, ya que items
-no se valida por discriminador sino como Union simple.
+por item) no forma parte del contrato final.
 
 Vive en app/services/ (y no en app/api/) siguiendo la separación de NM-03:
 la capa de API solo orquesta, la lógica de negocio va en servicios.
