@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel, Field
 
 from app.schemas.enums import (
@@ -7,7 +8,13 @@ from app.schemas.enums import (
     PerfilDestinatario,
 )
 
+
 class InputSchema(BaseModel):
+    documento_id: Optional[str] = Field(
+        default=None,
+        description="Identificador único del documento original extraído previamente",
+    )
+
     documento_titulo: str = Field(
         ...,
         min_length=3,
@@ -19,8 +26,6 @@ class InputSchema(BaseModel):
         min_length=10,
         description="Contenido del documento técnico que será adaptado",
     )
-
-
 
     perfil_destinatario: PerfilDestinatario = Field(
         ...,

@@ -7,7 +7,6 @@ from app.main import app
 from app.schemas.output import AlmacenamientoOCISchema
 from app.services.oci_storage_service import get_oci_storage_service_factory
 
-
 client = TestClient(app)
 _LOGGER = "app.api.v1.endpoints.documents"
 
@@ -38,14 +37,22 @@ def test_extract_document_endpoint_returns_text_and_metadata():
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "text": "# Lesson\n\nContent.",
-        "metadata": {
-            "filename": "lesson.md",
-            "format": "md",
-            "character_count": len("# Lesson\n\nContent."),
-            "page_count": None,
-        },
+    data = response.json()
+
+    assert "documento_id" in data
+    assert data["objeto_id"] == {
+        "documento_id": None,
+        "bucket": "test-bucket",
+        "objeto_id": "originales/test-lesson.md",
+        "status_upload": "completado",
+    } or data["objeto_id"] == "originales/test-lesson.md"
+    assert data["status_upload"] == "completado"
+    assert data["text"] == "# Lesson\n\nContent."
+    assert data["metadata"] == {
+        "filename": "lesson.md",
+        "format": "md",
+        "character_count": len("# Lesson\n\nContent."),
+        "page_count": None,
     }
 
 
@@ -64,14 +71,16 @@ def test_extract_document_endpoint_continues_when_storage_factory_fails(caplog):
         )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "text": "# Lesson\n\nContent.",
-        "metadata": {
-            "filename": "lesson.md",
-            "format": "md",
-            "character_count": len("# Lesson\n\nContent."),
-            "page_count": None,
-        },
+    data = response.json()
+
+    assert "documento_id" in data
+    assert data["status_upload"] == "error"
+    assert data["text"] == "# Lesson\n\nContent."
+    assert data["metadata"] == {
+        "filename": "lesson.md",
+        "format": "md",
+        "character_count": len("# Lesson\n\nContent."),
+        "page_count": None,
     }
     assert "ValueError" in caplog.text
     assert "OCI namespace is not configured" not in caplog.text

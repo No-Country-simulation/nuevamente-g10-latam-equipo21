@@ -1,4 +1,4 @@
-from typing import Literal, Union
+from typing import Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -68,6 +68,11 @@ class EvaluacionCalidadSchema(BaseModel):
 
 
 class AlmacenamientoOCISchema(BaseModel):
+    documento_id: Optional[str] = Field(
+        default=None,
+        description="Identificador único del documento original de origen",
+    )
+
     bucket: str = Field(
         ...,
         min_length=1,
@@ -78,7 +83,7 @@ class AlmacenamientoOCISchema(BaseModel):
         min_length=1,
     )
 
-    status_upload: Literal["completado", "error"]
+    status_upload: Literal["completado", "fallido", "error"]
 
 
 class OutputSchema(BaseModel):

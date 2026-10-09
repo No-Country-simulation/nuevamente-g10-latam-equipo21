@@ -43,7 +43,15 @@ def build_original_object_name(filename: str, content: bytes) -> str:
 
 
 def build_generated_object_name(payload: InputSchema) -> str:
-    """Construye el patrón del brief con una secuencia derivada del input."""
+    """
+    Construye un nombre de objeto determinista e idempotente para OCI.
+
+    Decisión de diseño (NM-27):
+    A partir de los metadatos y el hash canónico del payload de entrada, se genera
+    un nombre fijo. Peticiones con la misma entrada generarán exactamente el mismo
+    'objeto_id', asegurando que la operación sea idempotente y sobrescriba el objeto
+    previo en el bucket.
+    """
     canonical_payload = json.dumps(
         payload.model_dump(mode="json"),
         ensure_ascii=False,
@@ -85,13 +93,14 @@ class OCIStorageService:
         )
 
     def persist_generated_package(
-        self,
-        *,
-        payload: InputSchema,
-        response: OutputSchema,
+            self,
+            *,
+            payload: InputSchema,
+            response: OutputSchema,
     ) -> OutputSchema:
         object_name = build_generated_object_name(payload)
         completed_storage = AlmacenamientoOCISchema(
+            documento_id=payload.documento_id,  # <--- Agregado aquí
             bucket=self._bucket_name,
             objeto_id=object_name,
             status_upload="completado",
@@ -101,15 +110,17 @@ class OCIStorageService:
             object_name=object_name,
             content=package.model_dump_json().encode("utf-8"),
             content_type="application/json",
+            documento_id=payload.documento_id,  # <--- Pasado a _upload
         )
         return response.model_copy(update={"almacenamiento_oci": upload})
 
     def _upload(
-        self,
-        *,
-        object_name: str,
-        content: bytes,
-        content_type: str,
+            self,
+            *,
+            object_name: str,
+            content: bytes,
+            content_type: str,
+            documento_id: str | None = None,
     ) -> AlmacenamientoOCISchema:
         try:
             self._client.put_object(
@@ -120,16 +131,17 @@ class OCIStorageService:
                 content_type=content_type,
             )
             status_upload = "completado"
-        except Exception as error:  # El límite OCI debe preservar el contenido generado.
+        except Exception as error:
             logger.error(
                 "Falló la carga del objeto '%s' en OCI Object Storage (%s) [request_id=%s].",
                 object_name,
                 type(error).__name__,
                 get_request_id(),
             )
-            status_upload = "error"
+            status_upload = "error"  
 
         return AlmacenamientoOCISchema(
+            documento_id=documento_id,
             bucket=self._bucket_name,
             objeto_id=object_name,
             status_upload=status_upload,
