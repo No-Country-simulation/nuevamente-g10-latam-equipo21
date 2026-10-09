@@ -45,11 +45,21 @@ class ExtractedImage:
 
 
 @dataclass(frozen=True)
+class DocumentPage:
+    """Texto normalizado de una página y su número (1-indexado)."""
+
+    page_number: int
+    text: str
+
+
+@dataclass(frozen=True)
 class ExtractedDocument:
-    """Texto normalizado del documento y sus metadatos de origen.."""
+    """Texto normalizado del documento, sus páginas y metadatos de origen.."""
 
     text: str
     metadata: DocumentMetadata
+
+    pages: tuple[DocumentPage, ...] = ()
     images: tuple[ExtractedImage, ...] = ()
 
 
@@ -66,10 +76,13 @@ def extract_document(file_path: str | Path) -> ExtractedDocument:
         )
 
     if document_format == "pdf":
-        text, page_count, images = _extract_pdf(path)
+        text, raw_pages, images = _extract_pdf(path)
+        page_count = len(raw_pages)
+        pages = _build_pages(raw_pages)
     else:
         text = _read_text(path)
         page_count = None
+        pages = ()
         images = ()
 
     normalized_text = _normalize_text(text)
@@ -79,16 +92,18 @@ def extract_document(file_path: str | Path) -> ExtractedDocument:
         character_count=len(normalized_text),
         page_count=page_count,
     )
+
     return ExtractedDocument(
         text=normalized_text,
         metadata=metadata,
+        pages=pages,
         images=images,
     )
 
-
-def _extract_pdf(path: Path) -> tuple[str, int, tuple[ExtractedImage, ...]]:
+def _extract_pdf(path: Path) -> tuple[str, list[str], tuple[ExtractedImage, ...]]:
+    """Extrae texto por página e imágenes de un documento PDF."""
     reader = PdfReader(str(path))
-
+    
     pages_text: list[str] = []
     extracted_images: list[ExtractedImage] = []
 
@@ -124,8 +139,25 @@ def _extract_pdf(path: Path) -> tuple[str, int, tuple[ExtractedImage, ...]]:
         raise EmptyPdfTextError(
             f"El PDF '{path.name}' no contiene texto extraíble; OCR está fuera de alcance."
         )
+    return text, pages_text, tuple(extracted_images)
 
-    return text, len(reader.pages), tuple(extracted_images)
+
+def _build_pages(raw_pages: list[str]) -> tuple[DocumentPage, ...]:
+    """Normaliza cada página y conserva su número real (1-indexado), descartando las vacías."""
+    paginas = []
+
+    for index, raw in enumerate(raw_pages, start=1):
+        normalized = _normalize_text(raw)
+
+        if normalized:
+            paginas.append(
+                DocumentPage(
+                    page_number=index,
+                    text=normalized,
+                )
+            )
+
+    return tuple(paginas)
 
 
 def _read_text(path: Path) -> str:

@@ -7,6 +7,7 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from app.services.document_ingestion import (
+    DocumentPage,
     EmptyPdfTextError,
     UnsupportedDocumentFormatError,
     extract_document,
@@ -24,6 +25,7 @@ def test_extracts_and_normalizes_markdown(tmp_path: Path):
     assert document.metadata.format == "md"
     assert document.metadata.character_count == len(document.text)
     assert document.metadata.page_count is None
+    assert document.pages == ()
 
 
 def test_extracts_text_file(tmp_path: Path):
@@ -64,6 +66,10 @@ def test_extracts_pdf_pages_in_reading_order(tmp_path: Path):
 
     assert document.text == "Page one\n\nPage two"
     assert document.metadata.page_count == 2
+    assert document.pages == (
+        DocumentPage(page_number=1, text="Page one"),
+        DocumentPage(page_number=2, text="Page two"),
+    )
 
 
 def test_extracts_pdf_image_with_origin_position(tmp_path: Path):
