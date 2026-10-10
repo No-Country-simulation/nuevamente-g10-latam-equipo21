@@ -80,8 +80,10 @@ async def extract_document_endpoint(
             "objeto_id": objeto_id or metadata.filename,
             "status_upload": status_upload,
             "text": document.text,
+            "pages": [asdict(p) for p in getattr(document, "pages", [])],  # <--- Agregado para cumplir NM-23
             "metadata": asdict(metadata),
         }
+
     except DocumentExtractionError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

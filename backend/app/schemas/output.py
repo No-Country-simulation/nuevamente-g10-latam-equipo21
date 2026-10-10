@@ -68,18 +68,13 @@ class EvaluacionCalidadSchema(PublicSchema):
     observaciones: StrictStr
 
 
-<<<<<<< HEAD
-class AlmacenamientoOCISchema(BaseModel):
-    documento_id: Optional[str] = Field(
+class AlmacenamientoOCISchema(PublicSchema):
+    documento_id: Optional[StrictStr] = Field(
         default=None,
         description="Identificador único del documento original de origen",
     )
 
-    bucket: str = Field(
-=======
-class AlmacenamientoOCISchema(PublicSchema):
     bucket: StrictStr = Field(
->>>>>>> develop
         ...,
         min_length=1,
     )
