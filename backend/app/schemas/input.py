@@ -44,7 +44,11 @@ class InputSchema(PublicSchema):
 
     documento_paginas: Optional[list[DocumentoPaginaSchema]] = Field(
         default=None,
+<<<<<<< HEAD
         description="Lista de páginas del documento con su texto y número de página (NM-23)",
+=======
+        description="Lista de páginas del documento con su texto y número de página",
+>>>>>>> e6625991a362bb1149f82b0633f2d1a9cfaeb99a
     )
 
     perfil_destinatario: PerfilDestinatario = Field(
