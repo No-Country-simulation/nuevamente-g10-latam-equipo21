@@ -101,6 +101,11 @@ def crear_grafo_multiagente(
     def investigador(
         state: EstadoMultiAgente,
     ) -> dict:
+        # NM-28: si el servicio ya recuperó el contexto (con cobertura por
+        # ventanas, NM-22), no se recupera de nuevo.
+        if state.get("contexto_recuperado"):
+            return {}
+
         fragmentos = recuperar_contexto(
             consulta=state["consulta_recuperacion"],
             vector_store=vector_store,

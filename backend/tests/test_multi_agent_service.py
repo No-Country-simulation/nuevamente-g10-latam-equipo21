@@ -403,3 +403,54 @@ def test_multiagente_mejora_score_despues_de_revision():
         "Evaluación realizada por el crítico."
         in segundo_intento
     )
+
+class _LLMQueNoDebeLlamarse:
+    """El nodo investigador no debe tocar el LLM."""
+
+    def generate_structured(self, *args, **kwargs):
+        raise AssertionError("El investigador no debe llamar al LLM")
+
+
+def _primera_actualizacion(estado_inicial, vector_store):
+    grafo = crear_grafo_multiagente(
+        vector_store=vector_store,
+        llm_provider=_LLMQueNoDebeLlamarse(),
+    )
+    # La primera actualización es la del nodo investigador.
+    for actualizacion in grafo.stream(estado_inicial, stream_mode="updates"):
+        return actualizacion
+    return None
+
+
+def test_investigador_no_recupera_si_el_contexto_ya_viene_en_el_estado():
+    vector_store = VectorStoreFake()
+
+    actualizacion = _primera_actualizacion(
+        {
+            "documento_id": "doc-001",
+            "documento_titulo": "Titulo",
+            "consulta_recuperacion": "consulta",
+            "contexto_recuperado": "contexto ya recuperado por el servicio",
+        },
+        vector_store,
+    )
+
+    assert "investigador" in actualizacion
+    assert vector_store.consultas == []
+
+
+def test_investigador_recupera_si_el_estado_no_trae_contexto():
+    vector_store = VectorStoreFake()
+
+    actualizacion = _primera_actualizacion(
+        {
+            "documento_id": "doc-001",
+            "documento_titulo": "Titulo",
+            "consulta_recuperacion": "consulta",
+        },
+        vector_store,
+    )
+
+    assert "investigador" in actualizacion
+    assert vector_store.consultas == ["consulta"]
+    assert actualizacion["investigador"]["contexto_recuperado"]
