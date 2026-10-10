@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import Field, StrictInt, StrictStr
 
 from app.schemas.base import PublicSchema
@@ -7,6 +8,7 @@ from app.schemas.enums import (
     NivelDetalle,
     PerfilDestinatario,
 )
+
 
 class DocumentoPaginaSchema(PublicSchema):
     page_number: StrictInt = Field(
@@ -23,6 +25,11 @@ class DocumentoPaginaSchema(PublicSchema):
 
 
 class InputSchema(PublicSchema):
+    documento_id: Optional[StrictStr] = Field(
+        default=None,
+        description="Identificador único del documento original extraído previamente",
+    )
+
     documento_titulo: StrictStr = Field(
         ...,
         min_length=3,
@@ -35,12 +42,13 @@ class InputSchema(PublicSchema):
         description="Contenido del documento técnico que será adaptado",
     )
 
-    documento_paginas: list[DocumentoPaginaSchema] | None = Field(
+    documento_paginas: Optional[list[DocumentoPaginaSchema]] = Field(
         default=None,
-        description=(
-            "Páginas del documento de origen, si se conocen. Permite preservar la "
-            "trazabilidad de página de los fragmentos recuperados."
-        ),
+<<<<<<< HEAD
+        description="Lista de páginas del documento con su texto y número de página (NM-23)",
+=======
+        description="Lista de páginas del documento con su texto y número de página",
+>>>>>>> e6625991a362bb1149f82b0633f2d1a9cfaeb99a
     )
 
     perfil_destinatario: PerfilDestinatario = Field(
@@ -58,7 +66,7 @@ class InputSchema(PublicSchema):
         description="Sector o nicho al que pertenece el contenido",
     )
 
-    nivel_detalle: NivelDetalle = Field(
-        ...,
+    nivel_detalle: Optional[NivelDetalle] = Field(
+        default=None,
         description="Nivel de profundidad requerido para el contenido adaptado",
     )
