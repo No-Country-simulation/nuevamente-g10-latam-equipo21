@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # Orquestación multi-agente con LangGraph (NM-D1)
     MULTI_AGENT_MAX_ITERATIONS: int = 3
 
+    # Usa el grafo multi-agente en el endpoint de adaptación (NM-28).
+    # False = orquestación lineal (NM-08 + NM-09), que queda como fallback.
+    USE_MULTIAGENT: bool = False
+
     # Oracle Cloud Infrastructure (OCI Object Storage)
     OCI_AUTH_MODE: Literal["instance_principal", "api_key"] = "instance_principal"
     OCI_NAMESPACE: str = ""

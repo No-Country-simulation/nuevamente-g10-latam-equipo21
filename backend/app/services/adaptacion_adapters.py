@@ -343,3 +343,27 @@ def construir_servicio_real() -> AdaptacionService:
         logger.warning("Pipeline real no disponible; pasos sin cablear: %s", pendientes)
         raise PipelineNoConfiguradaError()
     return servicio
+
+@lru_cache(maxsize=1)
+def _servicio_multiagente():
+    """NM-28: mismo contexto, metadatos y storage que el flujo lineal, pero
+    generación + fidelidad las resuelve el grafo LangGraph de NM-D1."""
+    from app.services.adaptacion_multiagente_service import AdaptacionMultiAgenteService
+    from app.services.multi_agent_service import crear_grafo_multiagente
+
+    contexto = ContextoRealAdapter()
+    grafo = crear_grafo_multiagente(
+        vector_store=contexto.vector_store,
+        llm_provider=_llm_provider_compartido(),
+    )
+    return AdaptacionMultiAgenteService(
+        contexto=contexto,
+        metadatos=MetadatosRealAdapter(),
+        storage=StorageOCIAdapter(),
+        grafo=grafo,
+    )
+
+
+def construir_servicio_multiagente():
+    """Servicio con el grafo multi-agente (USE_MULTIAGENT=true)."""
+    return _servicio_multiagente()
