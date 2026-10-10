@@ -16,8 +16,8 @@ PAYLOAD_BASE = {
 }
 
 # Campos esperados por item según formato_salida, tomados de app.schemas.content.
-# tipo_item no forma parte del contrato final: ContenidoAdaptadoSchema.items es
-# una Union simple de *Item, sin discriminador.
+# tipo_item no forma parte del contrato final: OutputSchema relaciona el tipo
+# concreto del item con formato_generado sin exponer un discriminador.
 FORMATOS_Y_CAMPOS_ITEM = {
     "Flashcards": {"frente", "dorso", "pista_didactica"},
     "Quiz": {"pregunta", "opciones", "respuesta_correcta", "justificacion"},
