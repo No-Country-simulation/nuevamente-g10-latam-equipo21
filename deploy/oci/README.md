@@ -259,15 +259,27 @@ proceso por separado. Para el backend:
 
 ```bash
 sudo docker inspect --format '{{.RestartCount}} {{.State.StartedAt}}' nuevamente-backend-1
-sudo docker kill --signal=KILL nuevamente-backend-1
+sudo docker exec nuevamente-backend-1 python -c '
+import os, signal
+from pathlib import Path
+children = Path("/proc/1/task/1/children").read_text().split()
+assert len(children) == 1, "Abortado: se esperaba un único proceso hijo del init"
+pid = int(children[0])
+command = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+assert any(b"uvicorn" in arg or arg == b"streamlit" for arg in command), "Abortado: proceso inesperado"
+os.kill(pid, signal.SIGKILL)
+'
 sudo docker ps --filter name=nuevamente-backend-1
 sudo docker inspect --format '{{.RestartCount}} {{.State.StartedAt}} {{.State.Health.Status}}' nuevamente-backend-1
 ```
 
 Esperar a que vuelva a `healthy`, comprobar el incremento de `RestartCount` y
 repetir con `nuevamente-frontend-1`. Después verificar la URL pública y una
-generación. No usar `docker stop` para simular una caída: una parada manual
-no verifica la recuperación ante terminación inesperada.
+generación. El procedimiento termina únicamente el proceso de la aplicación,
+hijo del init que configura `init: true`, desde dentro del contenedor. Si cambia
+esa estructura, aborta antes de enviar la señal. No usar `docker stop` ni
+`docker kill`: Docker puede registrar una parada manual y suprimir la política
+de reinicio. Ver la [política de reinicio de Docker](https://docs.docker.com/engine/containers/start-containers-automatically/).
 
 ### Evidencia y pendientes de validación
 

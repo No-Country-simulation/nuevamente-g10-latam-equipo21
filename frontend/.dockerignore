@@ -9,4 +9,3 @@ venv/
 *.key
 .pytest_cache/
 tests/
-
