@@ -39,7 +39,10 @@ services:
       - "8000"
     networks:
       - backend_internal
+      # Egreso hacia Gemini, OCI y metadata de Instance Principal.
       - proxy
+    labels:
+      traefik.enable: "false"
 
   frontend:
     image: ${NUEVAMENTE_FRONTEND_IMAGE:?Defina NUEVAMENTE_FRONTEND_IMAGE}
@@ -82,7 +85,7 @@ services:
       traefik.enable: "true"
       traefik.docker.network: proxy
       traefik.http.routers.nuevamente.entrypoints: web
-      traefik.http.routers.nuevamente.rule: PathPrefix(`/`)
+      traefik.http.routers.nuevamente.rule: Host(`${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con la IP o dominio sin esquema ni puerto}`)
       traefik.http.services.nuevamente.loadbalancer.server.port: "8501"
 
 volumes:

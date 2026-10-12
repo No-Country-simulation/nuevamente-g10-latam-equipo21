@@ -25,6 +25,10 @@ FastAPI :8000
 
 - Solo Streamlit se publica mediante Traefik.
 - FastAPI utiliza `expose` y no publica el puerto 8000 en la VM.
+- Ambos servicios comparten `nuevamente-internal`. FastAPI también se conecta
+  a `proxy` para disponer de egreso hacia Gemini, OCI y los metadatos de
+  Instance Principal; esa conexión no publica puertos. Se deshabilita
+  explícitamente su descubrimiento por Traefik con `traefik.enable=false`.
 - Streamlit consume la API mediante `http://backend:8000/api/v1`.
 - FastAPI se autentica contra OCI mediante Instance Principal.
 - La clave de Gemini se almacena en OCI Vault y se materializa únicamente en
@@ -45,8 +49,52 @@ La plataforma OCI debe proporcionar:
 - el archivo root-owned
   `/etc/docker-platform/apps/nuevamente/runtime.env` con permisos `0600`.
 
-Los recursos compartidos se administran desde el repositorio de IaC. Este
-repositorio contiene únicamente la configuración de la aplicación.
+Este repositorio contiene únicamente la configuración de la aplicación. Los
+recursos compartidos se administran en
+[infrastructure-as-code](https://github.com/LeandroMelchiori/infrastructure-as-code).
+La referencia de implementación local es `oci/docker-platform` y el caso práctico
+`oci/case-studies/nuevamente-dev-oci.md` de ese repositorio. Si el evaluador no
+tiene acceso a la IaC, los requisitos mínimos son:
+
+1. VM Linux ARM64 con Docker Engine, Compose v2 o posterior y OCI CLI instalada.
+   La instancia consultada el 12 de octubre de 2026 usa `VM.Standard.A1.Flex`,
+   **1 OCPU y 6 GB de RAM**; la documentación de IaC registra un boot volume de
+   **50 GB**. Construir las imágenes en la VM conserva la arquitectura ARM64.
+2. Subnet con salida a Internet para Gemini, OCI y las descargas de imágenes.
+   Las reglas de entrada de NuevaMente son TCP **80** público y TCP **22** solo
+   desde la IP administrativa `/32`; **8000 y 8501 no se abren**. Aplicar la misma
+   restricción en NSG, security lists y firewall del sistema operativo.
+3. Crear la red `proxy` con `sudo docker network create proxy` si no existe.
+   Traefik debe conectarse a ella, publicar `80:80`, tener el entrypoint `web`,
+   el proveedor Docker y `providers.docker.exposedByDefault=false`. No publicar
+   su dashboard. El Compose de la aplicación crea `nuevamente-internal`.
+4. Crear un Dynamic Group limitado a la instancia, con regla
+   `instance.id = '<OCID_INSTANCIA>'`. Conceder lectura de `secret-bundles` en el
+   compartimento del secreto, lectura del bucket y operaciones de inspección,
+   lectura, creación y sobrescritura de objetos limitadas al bucket de contenidos.
+   No conceder borrado desde la aplicación. El administrador debe configurar las
+   políticas en los compartimentos correspondientes antes de iniciar el backend.
+5. Crear el secreto `nuevamente-gemini-api-key` en Vault y el bucket privado de
+   contenidos, y preparar `runtime.env` mediante los pasos siguientes.
+
+La VM actualmente comparte Traefik con otra aplicación. NuevaMente usa una regla
+`Host` configurable: `NUEVAMENTE_PUBLIC_HOST` debe ser su IP pública o dominio,
+sin `http://`, ruta ni puerto. Esto evita que NuevaMente capture peticiones
+dirigidas a otros hosts. Una regla para el mismo host y ruta en otra aplicación
+requiere resolver esa asignación antes de desplegar.
+
+### Always Free y evidencia de costos
+
+El dimensionamiento documentado está orientado a Always Free. No basta con el
+shape para afirmar que la cuenta no incurre en cargos: las cuotas se comparten
+con otros recursos del tenancy. Antes de cerrar NM-D2, adjuntar al PR evidencia
+de la elegibilidad de la instancia y volúmenes, el consumo acumulado y la ausencia
+de cargos atribuibles al despliegue en Cost Analysis. No incluir OCIDs ni datos
+de facturación personales. Esta comprobación de costos queda **pendiente**;
+la consulta de metadatos de la VM solo confirmó shape, CPU y memoria.
+
+No habilitar componentes adicionales para esta entrega. TLS, dominio propio y
+CI/CD automatizado quedan fuera del alcance de NM-D2.
 
 ## Secretos en la VM
 
@@ -64,6 +112,7 @@ sudo bash -c '
   oci secrets secret-bundle get-secret-bundle-by-name \
     --auth instance_principal \
     --secret-name nuevamente-gemini-api-key \
+    --vault-id OCID_DEL_VAULT \
     --stage CURRENT \
     --query "data.\"secret-bundle-content\".content" \
     --raw-output \
@@ -85,7 +134,24 @@ sudo bash -c '
 ```
 
 `TU_NAMESPACE` debe reemplazarse por el namespace de Object Storage obtenido
-desde OCI. El archivo no debe copiarse al repositorio ni mostrarse en logs.
+desde OCI y `OCID_DEL_VAULT` por el identificador del Vault que contiene el secreto.
+Configurar también la región de OCI CLI para ese Vault. El archivo no debe
+copiarse al repositorio ni mostrarse en logs. El bloque crea un archivo nuevo:
+no ejecutarlo sobre un `runtime.env` existente sin preservar su configuración.
+
+El modelo `gemini-3.1-flash-lite` y el timeout de 60 segundos son overrides del
+entorno desplegado, confirmados por consulta el 12 de octubre de 2026. No son los
+valores predeterminados del código. No se ha confirmado que la elección responda
+a una limitación de cuota. Conservarlos permite reproducir ese entorno; cambiar
+el modelo requiere validar generación y fidelidad. Los 60 segundos aplican por
+llamada al proveedor, mientras el frontend espera 180 segundos por petición:
+aumentar solo el timeout del proveedor no garantiza completar el flujo.
+
+NM-25 exige `GEMINI_API_KEY` y `OCI_NAMESPACE` no vacíos cuando se usa el pipeline
+real. Compose fija `USE_MOCK_LLM=false` y `OCI_AUTH_MODE=instance_principal`;
+no se requieren claves OCI de usuario. NM-22 utiliza por defecto
+`RETRIEVAL_MAX_VENTANAS=5` y `RETRIEVAL_VENTANA_CHARS=2000`. Se pueden declarar
+en `runtime.env` si se desea cambiarlos, sin copiar todo el `.env.example` local.
 
 ## Construcción de imágenes
 
@@ -112,6 +178,7 @@ cd deploy/oci
 sudo env \
   NUEVAMENTE_BACKEND_IMAGE=nuevamente-backend:<version-backend> \
   NUEVAMENTE_FRONTEND_IMAGE=nuevamente-frontend:<version-frontend> \
+  NUEVAMENTE_PUBLIC_HOST=IP_PUBLICA_O_DOMINIO \
   NUEVAMENTE_BACKEND_ENV_FILE=/etc/docker-platform/apps/nuevamente/runtime.env \
   docker compose -f compose.backend.yml up -d --remove-orphans
 ```
@@ -119,6 +186,24 @@ sudo env \
 Compose espera a que FastAPI esté saludable antes de iniciar Streamlit.
 
 ## Validaciones
+
+### Regresión local antes del despliegue
+
+Con las dependencias de backend y frontend instaladas en el entorno de pruebas:
+
+```bash
+(cd backend && USE_MOCK_LLM=true RUN_OCI_INTEGRATION=0 python -m pytest -q)
+(cd frontend && python -m pytest tests -q)
+```
+
+La revisión local del 12 de octubre de 2026, después de incorporar `develop`
+(`c4f92ad`), obtuvo **215 passed, 1 skipped** en backend y **55 passed** en
+frontend, con Python 3.12. La prueba omitida es la integración real con OCI.
+También se validó el Compose con un host de ejemplo y se comprobó que rechaza
+la configuración cuando falta `NUEVAMENTE_PUBLIC_HOST`. Estos controles no
+construyen imágenes ni sustituyen las pruebas del release en la VM con Python 3.11.
+
+### Servicios en la VM
 
 Estado de los contenedores:
 
@@ -154,6 +239,56 @@ sudo docker port nuevamente-backend-1
 
 El comando no debe devolver ninguna asignación de puertos.
 
+Desde una computadora externa a la VM, comprobar primero que la interfaz
+responde y que el acceso directo a FastAPI falla:
+
+```bash
+curl --fail --max-time 10 http://IP_PUBLICA/_stcore/health
+curl --connect-timeout 5 --max-time 10 http://IP_PUBLICA:8000/api/v1/health
+```
+
+El primero debe devolver `ok`; el segundo debe fallar por conexión rechazada o
+timeout. Un timeout aislado no demuestra aislamiento si la interfaz tampoco
+responde. Las rutas `/docs` y `/api/v1/health` del host público no deben entregar
+Swagger ni el JSON de FastAPI (Streamlit puede devolver su propio HTML).
+
+### Reinicio automático
+
+En una ventana coordinada sin generaciones activas, simular la caída de cada
+proceso por separado. Para el backend:
+
+```bash
+sudo docker inspect --format '{{.RestartCount}} {{.State.StartedAt}}' nuevamente-backend-1
+sudo docker kill --signal=KILL nuevamente-backend-1
+sudo docker ps --filter name=nuevamente-backend-1
+sudo docker inspect --format '{{.RestartCount}} {{.State.StartedAt}} {{.State.Health.Status}}' nuevamente-backend-1
+```
+
+Esperar a que vuelva a `healthy`, comprobar el incremento de `RestartCount` y
+repetir con `nuevamente-frontend-1`. Después verificar la URL pública y una
+generación. No usar `docker stop` para simular una caída: una parada manual
+no verifica la recuperación ante terminación inesperada.
+
+### Evidencia y pendientes de validación
+
+La consulta de solo lectura del 12 de octubre de 2026 observó:
+
+| Comprobación | Resultado |
+|---|---|
+| Backend y frontend | Ambos `healthy`, con imágenes etiquetadas `develop-c4f92ad`. |
+| `docker port nuevamente-backend-1` | Salida vacía. |
+| Puertos publicados de ambos contenedores | `PortBindings={}`. |
+| Política de reinicio | `unless-stopped` en ambos servicios; no se simuló una caída. |
+| Configuración del backend | Importación de `Settings` exitosa con `instance_principal`; valores de ventanas 5 y 2000. |
+| Portada pública | HTTP 200 desde fuera de la VM. |
+| Acceso externo directo a `:8000/api/v1/health` | Timeout a los 10 segundos, sin respuesta HTTP, con la portada accesible. |
+
+Estos resultados corresponden al despliegue existente. No demuestran que los
+ajustes de este PR ya estén desplegados. Antes de integrar, adjuntar al PR el
+SHA y las imágenes del nuevo release, los resultados de reinicio y acceso externo,
+una generación completa con ambos objetos almacenados y la confirmación de
+Always Free. La prueba histórica siguiente no sustituye esa validación.
+
 ### Prueba end-to-end y persistencia en Object Storage
 
 Con `USE_MOCK_LLM=false`, cargar un documento admitido desde la URL pública de
@@ -186,7 +321,7 @@ no se considera una validación completa del despliegue.
 
 ## Actualización del frontend
 
-Cuando se integre un cambio como NM-14 no es necesario recrear la infraestructura
+Cuando se integre un cambio del frontend no es necesario recrear la infraestructura
 ni el backend:
 
 ```bash
@@ -199,6 +334,7 @@ cd deploy/oci
 sudo env \
   NUEVAMENTE_BACKEND_IMAGE=nuevamente-backend:<version-backend-actual> \
   NUEVAMENTE_FRONTEND_IMAGE=nuevamente-frontend:<nueva-version> \
+  NUEVAMENTE_PUBLIC_HOST=IP_PUBLICA_O_DOMINIO \
   NUEVAMENTE_BACKEND_ENV_FILE=/etc/docker-platform/apps/nuevamente/runtime.env \
   docker compose -f compose.backend.yml up -d
 ```
@@ -212,3 +348,17 @@ SSH permanece restringido a una única dirección IPv4 `/32`. Si cambia la IP de
 operador, primero se debe ejecutar un `terraform plan` en el repositorio IaC y
 comprobar que el resultado sea únicamente una actualización en sitio de la regla
 SSH, con `0 to destroy`, antes de aplicar el cambio.
+
+El único puerto público de NuevaMente es HTTP 80 a través de Traefik. La VM
+compartida puede tener reglas adicionales para otras aplicaciones; no se deben
+cerrar ni modificar como parte de NM-D2. Revisar las reglas efectivas del NSG,
+security lists y firewall antes de afirmar que la VM completa solo expone 80.
+
+## Limitaciones de la demo
+
+La URL de NuevaMente usa HTTP y no exige autenticación; cualquier visitante puede
+consumir cuota de Gemini y almacenar objetos. La protección del acceso y limpieza
+administrativa se siguen en NM-39. No cargar documentos privados o credenciales.
+Una prueba con documento corto verifica el despliegue, pero no demuestra el
+comportamiento con documentos largos ni sustituye las demos de NM-17. Los límites
+de embeddings y latencia del proveedor deben registrarse por separado si aparecen.
