@@ -34,6 +34,25 @@ def test_extract_document_posts_multipart_file(monkeypatch):
 	assert observed["kwargs"]["files"]["file"] == ("source.md", b"# Source", "text/markdown")
 
 
+def test_api_client_uses_configured_timeout(monkeypatch):
+	observed = {}
+
+	def fake_request(method, url, **kwargs):
+		observed.update(kwargs)
+		return FakeResponse({"text": "Contenido", "metadata": {}})
+
+	monkeypatch.setattr(requests, "request", fake_request)
+	extract_document(
+		api_base_url="http://api.test/api/v1",
+		file_name="source.md",
+		file_content=b"# Source",
+		content_type="text/markdown",
+		timeout=(2, 45),
+	)
+
+	assert observed["timeout"] == (2, 45)
+
+
 def test_adapt_document_posts_contract_payload(monkeypatch):
 	observed = {}
 	payload = {"documento_titulo": "Fuente", "documento_contenido": "Texto"}

@@ -67,8 +67,41 @@ _EJEMPLO_RESPUESTA_200 = {
             "content": _EJEMPLO_ERROR("ENTRADA_INVALIDA", "Campo 'perfil_destinatario': Input should be 'Principiante', ..."),
         },
         502: {
-            "description": "Falla del LLM o del vector store.",
-            "content": _EJEMPLO_ERROR("LLM_NO_DISPONIBLE", "No se pudo generar el contenido en este momento. Intenta nuevamente."),
+            "description": (
+                "Falla del LLM, vector store o autenticación con OCI Object Storage."
+            ),
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "llm_no_disponible": {
+                            "summary": "Falla del LLM",
+                            "value": {
+                                "status": "error",
+                                "error": {
+                                    "codigo": "LLM_NO_DISPONIBLE",
+                                    "mensaje": (
+                                        "No se pudo generar el contenido en este momento. "
+                                        "Intenta nuevamente."
+                                    ),
+                                },
+                            },
+                        },
+                        "oci_autenticacion_error": {
+                            "summary": "Falla de autenticación OCI",
+                            "value": {
+                                "status": "error",
+                                "error": {
+                                    "codigo": "OCI_AUTENTICACION_ERROR",
+                                    "mensaje": (
+                                        "No fue posible autenticarse con OCI Object Storage. "
+                                        "Verifica la configuración de credenciales e intenta nuevamente."
+                                    ),
+                                },
+                            },
+                        },
+                    }
+                }
+            },
         },
         501: {
             "description": "Pipeline real aún no cableada en este entorno (USE_MOCK_LLM=false).",

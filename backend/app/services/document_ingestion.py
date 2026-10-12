@@ -34,11 +34,20 @@ class DocumentMetadata:
 
 
 @dataclass(frozen=True)
+class DocumentPage:
+    """Texto normalizado de una página y su número (1-indexado)."""
+
+    page_number: int
+    text: str
+
+
+@dataclass(frozen=True)
 class ExtractedDocument:
-    """Texto normalizado del documento y sus metadatos de origen.."""
+    """Texto normalizado del documento, sus páginas y metadatos de origen.."""
 
     text: str
     metadata: DocumentMetadata
+    pages: tuple[DocumentPage, ...] = ()
 
 
 def extract_document(file_path: str | Path) -> ExtractedDocument:
@@ -54,10 +63,13 @@ def extract_document(file_path: str | Path) -> ExtractedDocument:
         )
 
     if document_format == "pdf":
-        text, page_count = _extract_pdf(path)
+        text, raw_pages = _extract_pdf(path)
+        page_count = len(raw_pages)
+        pages = _build_pages(raw_pages)
     else:
         text = _read_text(path)
         page_count = None
+        pages = ()
 
     normalized_text = _normalize_text(text)
     metadata = DocumentMetadata(
@@ -66,10 +78,10 @@ def extract_document(file_path: str | Path) -> ExtractedDocument:
         character_count=len(normalized_text),
         page_count=page_count,
     )
-    return ExtractedDocument(text=normalized_text, metadata=metadata)
+    return ExtractedDocument(text=normalized_text, metadata=metadata, pages=pages)
 
 
-def _extract_pdf(path: Path) -> tuple[str, int]:
+def _extract_pdf(path: Path) -> tuple[str, list[str]]:
     reader = PdfReader(str(path))
     pages_text = [page.extract_text() or "" for page in reader.pages]
     text = "\n\n".join(pages_text)
@@ -77,7 +89,17 @@ def _extract_pdf(path: Path) -> tuple[str, int]:
         raise EmptyPdfTextError(
             f"El PDF '{path.name}' no contiene texto extraíble; OCR está fuera de alcance."
         )
-    return text, len(reader.pages)
+    return text, pages_text
+
+
+def _build_pages(raw_pages: list[str]) -> tuple[DocumentPage, ...]:
+    """Normaliza cada página y conserva su número real (1-indexado), descartando las vacías."""
+    paginas = []
+    for index, raw in enumerate(raw_pages, start=1):
+        normalized = _normalize_text(raw)
+        if normalized:
+            paginas.append(DocumentPage(page_number=index, text=normalized))
+    return tuple(paginas)
 
 
 def _read_text(path: Path) -> str:

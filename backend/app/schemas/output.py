@@ -1,7 +1,8 @@
 from typing import Literal, Union
 
-from pydantic import BaseModel, Field
+from pydantic import Field, StrictFloat, StrictInt, StrictStr, model_validator
 
+from app.schemas.base import PublicSchema
 from app.schemas.content import (
     FlashcardItem,
     GuionItem,
@@ -21,30 +22,30 @@ ContenidoItem = Union[
 ]
 
 
-class MetadatosSchema(BaseModel):
+class MetadatosSchema(PublicSchema):
     perfil_aplicado: PerfilDestinatario
 
     formato_generado: FormatoSalida
 
-    tiempo_estimado_estudio_minutos: int = Field(
+    tiempo_estimado_estudio_minutos: StrictInt = Field(
         ...,
         ge=0,
     )
 
-    conceptos_clave: list[str] = Field(
+    conceptos_clave: list[StrictStr] = Field(
         ...,
         min_length=1,
     )
-    prerrequisitos: list[str] = Field(default_factory=list)
+    prerrequisitos: list[StrictStr] = Field(default_factory=list)
 
 
-class ContenidoAdaptadoSchema(BaseModel):
-    titulo: str = Field(
+class ContenidoAdaptadoSchema(PublicSchema):
+    titulo: StrictStr = Field(
         ...,
         min_length=1,
     )
 
-    introduccion_contextualizada: str = Field(
+    introduccion_contextualizada: StrictStr = Field(
         ...,
         min_length=1,
     )
@@ -55,8 +56,8 @@ class ContenidoAdaptadoSchema(BaseModel):
     )
 
 
-class EvaluacionCalidadSchema(BaseModel):
-    anclaje_fuente_score: float = Field(
+class EvaluacionCalidadSchema(PublicSchema):
+    anclaje_fuente_score: StrictFloat = Field(
         ...,
         ge=0,
         le=1,
@@ -64,16 +65,16 @@ class EvaluacionCalidadSchema(BaseModel):
 
     claridad_pedagogica: Literal["Alta", "Media", "Baja"]
 
-    observaciones: str
+    observaciones: StrictStr
 
 
-class AlmacenamientoOCISchema(BaseModel):
-    bucket: str = Field(
+class AlmacenamientoOCISchema(PublicSchema):
+    bucket: StrictStr = Field(
         ...,
         min_length=1,
     )
 
-    objeto_id: str = Field(
+    objeto_id: StrictStr = Field(
         ...,
         min_length=1,
     )
@@ -81,7 +82,7 @@ class AlmacenamientoOCISchema(BaseModel):
     status_upload: Literal["completado", "error"]
 
 
-class OutputSchema(BaseModel):
+class OutputSchema(PublicSchema):
     status: Literal["exito", "error"]
 
     metadatos: MetadatosSchema
@@ -92,15 +93,34 @@ class OutputSchema(BaseModel):
 
     almacenamiento_oci: AlmacenamientoOCISchema
 
+    @model_validator(mode="after")
+    def validar_items_del_formato(self) -> "OutputSchema":
+        tipos_por_formato = {
+            FormatoSalida.TUTORIAL: TutorialItem,
+            FormatoSalida.FLASHCARDS: FlashcardItem,
+            FormatoSalida.QUIZ: QuizItem,
+            FormatoSalida.RESUMEN_EJECUTIVO: ResumenItem,
+            FormatoSalida.GUION_CLASE: GuionItem,
+        }
+        formato = self.metadatos.formato_generado
+        tipo_esperado = tipos_por_formato[formato]
+        for indice, item in enumerate(self.contenido_adaptado.items):
+            if not isinstance(item, tipo_esperado):
+                raise ValueError(
+                    f"contenido_adaptado.items[{indice}] no corresponde "
+                    f"al formato '{formato.value}'"
+                )
+        return self
 
-class ErrorSchema(BaseModel):
-    codigo: str = Field(
+
+class ErrorSchema(PublicSchema):
+    codigo: StrictStr = Field(
         ...,
         min_length=1,
         description="Código identificador del error",
     )
 
-    mensaje: str = Field(
+    mensaje: StrictStr = Field(
         ...,
         min_length=1,
         description="Descripción del error",

@@ -83,6 +83,7 @@ el frontend aún no está implementado en `develop`.
 {
   "documento_titulo": "string",
   "documento_contenido": "string",
+  "documento_paginas": ["{ page_number: number, text: string } (opcional)"],
   "perfil_destinatario": "enum",
   "formato_salida": "enum",
   "nicho_sector": "enum",
@@ -104,6 +105,12 @@ el frontend aún no está implementado en `develop`.
 > Nota: los valores enum usan exactamente los identificadores publicados en este contrato, sin
 > espacios ni acentos. El frontend puede mapearlos a etiquetas legibles sin cambiar el valor que
 > intercambia con la API.
+
+> `documento_paginas` (opcional, NM-23): lista de páginas del documento de origen
+> (`{"page_number": number, "text": string}`, 1-indexadas). Cuando se envía, cada fragmento
+> indexado conserva su página real y la respuesta puede citarla; si se omite, todo el texto se
+> indexa como página 1 (comportamiento previo). El endpoint `POST /api/v1/documents/extract` ya
+> devuelve `pages` con este formato para que el cliente pueda reenviarlas.
 
 ---
 
@@ -205,6 +212,16 @@ contenido de cada item.
 > Pydantic separado (`FlashcardItem`, `QuizItem`, `TutorialItem`, `ResumenItem`, `GuionItem`) con
 > un `Union` discriminado por `formato_salida`, para que la validación de tipado estricto se
 > mantenga incluso siendo la estructura polimórfica.
+
+---
+
+## 5.1 Selección de contexto para la generación (NM-22)
+
+**Estrategia.** Si el documento mide hasta `RETRIEVAL_VENTANA_CHARS` (2000) caracteres, se hace una sola consulta (título + primeros 500 caracteres), igual que antes. Si es más largo, se divide en hasta `RETRIEVAL_MAX_VENTANAS` (5) secciones contiguas. Cada sección genera su propia consulta (título + sus primeros 500 caracteres) y recupera `RETRIEVAL_TOP_K // secciones` fragmentos, con un mínimo de 1. Los resultados se unen sin duplicados por `chunk_id`, en orden de documento.
+
+**Consumo de tokens.** El contexto que recibe el LLM no crece: el total queda acotado por `max(RETRIEVAL_TOP_K, secciones)` fragmentos (hasta 5 con la configuración por defecto), unos 1400 tokens con chunks de 1000 caracteres, bajo `RETRIEVAL_MAX_CONTEXT_TOKENS` (2000). Como el reparto usa división entera y no redistribuye el resto, con `RETRIEVAL_TOP_K=5` y 2, 3 o 4 secciones se recuperan 4, 3 y 4 fragmentos respectivamente. Lo que aumenta es el consumo de cuota de embeddings de consulta: de 1 a un máximo de 5 llamadas por adaptación.
+
+**Limitación conocida.** Cada sección se representa solo por sus primeros 500 caracteres, así que un tema que aparece únicamente en el medio de una sección puede quedar fuera. Reranking y búsqueda híbrida están fuera de alcance.
 
 ---
 

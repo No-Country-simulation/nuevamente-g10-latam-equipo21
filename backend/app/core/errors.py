@@ -42,6 +42,14 @@ class VectorStoreError(AppError):
     codigo = "VECTOR_STORE_NO_DISPONIBLE"
     mensaje = "No se pudo recuperar el contexto del documento. Intenta nuevamente."
 
+class OCIAuthenticationError(AppError):
+    status_code = 502
+    codigo = "OCI_AUTENTICACION_ERROR"
+    mensaje = (
+        "No fue posible autenticarse con OCI Object Storage. "
+        "Verifica la configuración de credenciales e intenta nuevamente."
+    )    
+
 
 class SinContextoRelevanteError(AppError):
     status_code = 422
