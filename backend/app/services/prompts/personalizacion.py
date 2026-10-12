@@ -11,52 +11,55 @@ from __future__ import annotations
 
 INSTRUCCIONES_PERFIL: dict[str, str] = {
     "Principiante": (
-        "Escribí para alguien sin experiencia previa en el tema. Definí cada término técnico la "
-        "primera vez que aparece, evitá jerga innecesaria y apoyate en analogías cotidianas."
+        "Escribe para alguien sin experiencia previa en el tema. Define cada término técnico la "
+        "primera vez que aparece, evita jerga innecesaria y apóyate en analogías cotidianas."
     ),
     "Desarrollador_Junior_SemiSenior": (
-        "Escribí para una persona desarrolladora con experiencia básica a intermedia. Podés usar "
+        "Escribe para una persona desarrolladora con experiencia básica a intermedia. Puedes usar "
         "terminología técnica estándar sin redefinirla, con foco en la aplicación práctica y en "
         "buenas prácticas."
     ),
     "Lider_Tecnico_Arquitecto": (
-        "Escribí para una persona con expertise técnico profundo. Priorizá trade-offs de "
-        "diseño, implicancias de arquitectura, escalabilidad y mantenibilidad. Podés ser denso "
+        "Escribe para una persona con expertise técnico profundo. Prioriza trade-offs de "
+        "diseño, implicancias de arquitectura, escalabilidad y mantenibilidad. Puedes ser denso "
         "y directo, sin explicar conceptos básicos."
     ),
     "Gestor_Ejecutivo_No_Tecnico": (
-        "Escribí para una persona sin formación técnica que toma decisiones de negocio. Evitá "
-        "jerga técnica por completo y enfocate en impacto de negocio, riesgo, costo y tiempos."
+        "Escribe para una persona sin formación técnica que toma decisiones de negocio. Evita "
+        "jerga técnica por completo y enfócate en el impacto de negocio, el riesgo, el costo y los tiempos solo cuando el documento los mencione."
     ),
 }
 
 INSTRUCCIONES_NICHO: dict[str, str] = {
     "Fintech": (
-        "Usá ejemplos y analogías del sector financiero: pagos, banca, riesgo crediticio y "
-        "cumplimiento regulatorio."
+        "Usa ejemplos y analogías del sector financiero: pagos, banca, riesgo crediticio y "
+        "gestión de riesgo. Los ejemplos del sector son solo analogías; no incorpores "
+        "normativas, estándares ni datos que el documento no mencione."
     ),
     "Salud": (
-        "Usá ejemplos y analogías del sector salud: atención al paciente, historias clínicas y "
-        "privacidad de datos médicos."
+        "Usa ejemplos y analogías del sector salud: atención al paciente, historias clínicas y "
+        "privacidad de datos médicos. Los ejemplos del sector son solo analogías; no incorpores "
+        "normativas, estándares ni datos que el documento no mencione."
     ),
     "Ecommerce": (
-        "Usá ejemplos y analogías de comercio electrónico: catálogos de productos, checkout, "
-        "inventario y comportamiento de compra."
+        "Usa ejemplos y analogías de comercio electrónico: catálogos de productos, checkout, "
+        "inventario y comportamiento de compra. Los ejemplos del sector son solo analogías; "
+        "no incorpores normativas, estándares ni datos que el documento no mencione."
     ),
-    "General": "Usá ejemplos neutros, no atados a un sector de aplicación específico.",
+    "General": "Usa ejemplos neutros, no atados a un sector de aplicación específico.",
 }
 
 INSTRUCCIONES_NIVEL_DETALLE: dict[str, str] = {
     "Introductorio": (
-        "Cubrí el tema a alto nivel: qué es y para qué sirve. No entres en casos borde ni en "
+        "Cubre el tema a alto nivel: qué es y para qué sirve. No entres en casos borde ni en "
         "detalles de implementación."
     ),
     "Didactico": (
-        "Explicá el tema con profundidad media: el cómo además del qué, apoyado en ejemplos "
+        "Explica el tema con profundidad media: el cómo además del qué, apoyado en ejemplos "
         "guiados paso a paso."
     ),
     "Tecnico_Profundo": (
-        "Cubrí el tema en profundidad máxima: casos borde, funcionamiento interno, trade-offs "
+        "Cubre el tema en profundidad máxima: casos borde, funcionamiento interno, trade-offs "
         "de performance y de escalabilidad."
     ),
 }
@@ -96,7 +99,12 @@ INSTRUCCIONES_FORMATO: dict[str, dict[str, str]] = {
     "Resumen_Ejecutivo": {
         "instrucciones": (
             'Cada elemento de "items" es un punto clave para una audiencia ejecutiva, con las '
-            'claves "punto_clave", "descripcion" e "impacto_negocio".'
+            'claves "punto_clave", "descripcion" e "impacto_negocio". En "impacto_negocio" '
+            "resume, con palabras sencillas, la consecuencia práctica que el documento "
+            "menciona para ese punto (por ejemplo, ahorro, control de costos, tolerancia a "
+            "fallas o menos tareas manuales). No agregues beneficios que el documento no diga. "
+            "Usa la frase exacta \"El documento no analiza el impacto de negocio de este "
+            'punto." solo si el documento no menciona ninguna consecuencia práctica de ese punto.'
         ),
         "ejemplo_item": '{"punto_clave": "...", "descripcion": "...", "impacto_negocio": "..."}',
     },
