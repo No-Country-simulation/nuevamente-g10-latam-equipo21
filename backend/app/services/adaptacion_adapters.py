@@ -257,13 +257,19 @@ class MetadatosRealAdapter:
             self._generar = generar_metadatos_aprendizaje
         if self._llm is None:
             self._llm = _llm_provider_compartido()
-        return self._generar(
-            documento_contenido=payload.documento_contenido,
-            contenido_adaptado=contenido,
-            perfil_destinatario=payload.perfil_destinatario,
-            formato_salida=payload.formato_salida,
-            llm_provider=self._llm,
-        )
+        from app.core.errors import ContenidoInsuficienteError
+        from app.services.metadata_service import MetadatosInsuficientesError
+        try:
+            return self._generar(
+                documento_contenido=payload.documento_contenido,
+                contenido_adaptado=contenido,
+                perfil_destinatario=payload.perfil_destinatario,
+                formato_salida=payload.formato_salida,
+                llm_provider=self._llm,
+            )
+        except MetadatosInsuficientesError as error:
+            # NM-21: un documento demasiado corto no es una falla del LLM (502): es 422.
+            raise ContenidoInsuficienteError(str(error)) from error
 
 
 def armar_respuesta_provisional(paquete: dict) -> OutputSchema:

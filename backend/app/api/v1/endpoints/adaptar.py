@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.schemas.input import InputSchema
-from app.schemas.output import OutputSchema
+from app.schemas.output import ErrorResponseSchema, OutputSchema
 from app.services.dependencies import get_adaptacion_service
 
 router = APIRouter()
@@ -63,13 +63,15 @@ _EJEMPLO_RESPUESTA_200 = {
             "content": {"application/json": {"example": _EJEMPLO_RESPUESTA_200}},
         },
         422: {
-            "description": "Entrada inválida (campo faltante o valor fuera de enum; el mensaje lista los valores válidos).",
+            "description": "Entrada inválida o contenido insuficiente (campo faltante o fuera de enum, o documento sin material verificable).",
+            "model": ErrorResponseSchema,
             "content": _EJEMPLO_ERROR("ENTRADA_INVALIDA", "Campo 'perfil_destinatario': Input should be 'Principiante', ..."),
         },
         502: {
             "description": (
                 "Falla del LLM, vector store o autenticación con OCI Object Storage."
             ),
+            "model": ErrorResponseSchema,
             "content": {
                 "application/json": {
                     "examples": {
@@ -102,10 +104,6 @@ _EJEMPLO_RESPUESTA_200 = {
                     }
                 }
             },
-        },
-        501: {
-            "description": "Pipeline real aún no cableada en este entorno (USE_MOCK_LLM=false).",
-            "content": _EJEMPLO_ERROR("PIPELINE_NO_CONFIGURADA", "La pipeline de adaptación aún no está disponible en este entorno."),
         },
     },
     summary="Adapta un documento técnico a un formato educativo",
