@@ -270,3 +270,51 @@ def test_generation_without_pages_omits_documento_paginas(monkeypatch):
 	app.run()
 
 	assert "documento_paginas" not in calls[1][2]["json"]
+
+
+# --- NM-38: el pie no expone la URL de la API ---
+def _footer(app) -> str:
+	footers = [element.value for element in app.markdown if 'class="api-footnote"' in element.value]
+	assert len(footers) == 1, "debe haber exactamente un pie de estado"
+	return footers[0]
+
+
+def test_footer_hides_api_url_and_shows_neutral_state():
+	app = _app()
+
+	footer = _footer(app)
+	assert "http://" not in footer
+	assert "Servicio de adaptación" in footer
+
+
+def test_footer_shows_connected_after_successful_request(monkeypatch):
+	responses = [
+		FakeResponse({"text": "Texto fuente", "metadata": {}}),
+		FakeResponse({"status": "exito", "mensaje": "Contenido listo"}),
+	]
+	monkeypatch.setattr(requests, "request", lambda *a, **k: responses.pop(0))
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click()
+	app.run()
+
+	footer = _footer(app)
+	assert "http://" not in footer
+	assert "API conectada" in footer
+
+
+def test_footer_shows_disconnected_when_request_fails(monkeypatch):
+	def failing_request(*args, **kwargs):
+		raise requests.ConnectionError("sin conexión")
+
+	monkeypatch.setattr(requests, "request", failing_request)
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click()
+	app.run()
+
+	footer = _footer(app)
+	assert "http://" not in footer
+	assert "Sin conexión con la API" in footer
