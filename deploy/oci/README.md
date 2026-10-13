@@ -155,10 +155,15 @@ no ejecutarlo sobre un `runtime.env` existente sin preservar su configuración.
 El modelo `gemini-3.1-flash-lite` y el timeout de 60 segundos son overrides del
 entorno desplegado, confirmados por consulta el 12 de octubre de 2026. No son los
 valores predeterminados del código. No se ha confirmado que la elección responda
-a una limitación de cuota. Conservarlos permite reproducir ese entorno; cambiar
-el modelo requiere validar generación y fidelidad. Los 60 segundos aplican por
-llamada al proveedor, mientras el frontend espera 180 segundos por petición:
-aumentar solo el timeout del proveedor no garantiza completar el flujo.
+a una limitación de cuota. Para cerrar NM-D2 se mantiene el modelo porque la
+generación y persistencia del release fueron validadas con él. Según el
+[calendario oficial de Gemini](https://ai.google.dev/gemini-api/docs/deprecations/)
+consultado el 12 de octubre de 2026, continúa disponible y su fecha más temprana
+de retirada es el 7 de mayo de 2027. La actualización se evaluará por separado
+mediante pruebas de calidad, fidelidad, tiempos de respuesta y cuotas.
+
+Se mantiene el timeout de 60 segundos utilizado en la validación del despliegue.
+Su suficiencia para documentos largos queda pendiente de pruebas.
 
 NM-25 exige `GEMINI_API_KEY` y `OCI_NAMESPACE` no vacíos cuando se usa el pipeline
 real. Compose fija `USE_MOCK_LLM=false` y `OCI_AUTH_MODE=instance_principal`;
