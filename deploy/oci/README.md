@@ -58,8 +58,8 @@ tiene acceso a la IaC, los requisitos mínimos son:
 
 1. VM Linux ARM64 con Docker Engine, Compose v2 o posterior y OCI CLI instalada.
    La instancia consultada el 12 de octubre de 2026 usa `VM.Standard.A1.Flex`,
-   **1 OCPU y 6 GB de RAM**; la documentación de IaC registra un boot volume de
-   **50 GB**. Construir las imágenes en la VM conserva la arquitectura ARM64.
+   **1 OCPU y 6 GB de RAM**, con un boot volume de **50 GB** confirmado mediante
+   la API de OCI. Construir las imágenes en la VM conserva la arquitectura ARM64.
 2. Subnet con salida a Internet para Gemini, OCI y las descargas de imágenes.
    Las reglas de entrada de NuevaMente son TCP **80** público y TCP **22** solo
    desde la IP administrativa `/32`; **8000 y 8501 no se abren**. Aplicar la misma
@@ -85,13 +85,26 @@ requiere resolver esa asignación antes de desplegar.
 
 ### Always Free y evidencia de costos
 
-El dimensionamiento documentado está orientado a Always Free. No basta con el
-shape para afirmar que la cuenta no incurre en cargos: las cuotas se comparten
-con otros recursos del tenancy. Antes de cerrar NM-D2, adjuntar al PR evidencia
-de la elegibilidad de la instancia y volúmenes, el consumo acumulado y la ausencia
-de cargos atribuibles al despliegue en Cost Analysis. No incluir OCIDs ni datos
-de facturación personales. Esta comprobación de costos queda **pendiente**;
-la consulta de metadatos de la VM solo confirmó shape, CPU y memoria.
+La consulta de solo lectura a OCI del 12 de octubre de 2026 confirmó:
+
+- `sa-saopaulo-1` es la región principal y la única región suscrita.
+- Una instancia no terminada: `VM.Standard.A1.Flex`, 1 OCPU y 6 GB de RAM.
+- Dos volúmenes disponibles de 47 y 50 GB: 97 GB combinados. El volumen de la
+  instancia utilizada por NuevaMente es el de 50 GB.
+- Los cuatro buckets regionales reportan aproximadamente 13,8 MB en total;
+  el bucket de NuevaMente reporta aproximadamente 13,3 MB.
+- Usage API / Cost Analysis, del 1 de octubre al 12 de octubre a las 00:00 UTC
+  (fin exclusivo), reporta USD 0 en las filas con importe de Compute, Block
+  Storage, Object Storage, Virtual Cloud Network, Logging y Telemetry. Existe
+  además una fila de Object Storage sin importe: no se interpreta como cero.
+
+Este dimensionamiento está dentro de las cuotas publicadas de
+[Always Free](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)
+para Compute y almacenamiento de volúmenes y objetos. No se crearon recursos
+OCI adicionales para esta validación. Las cuotas son compartidas por el tenancy
+y los reportes de costos pueden tener demora: la consulta no garantiza cargos
+futuros nulos ni cubre el consumo posterior al período indicado. La cuota de
+Gemini es independiente de Always Free de OCI.
 
 No habilitar componentes adicionales para esta entrega. TLS, dominio propio y
 CI/CD automatizado quedan fuera del alcance de NM-D2.
@@ -281,27 +294,69 @@ esa estructura, aborta antes de enviar la señal. No usar `docker stop` ni
 `docker kill`: Docker puede registrar una parada manual y suprimir la política
 de reinicio. Ver la [política de reinicio de Docker](https://docs.docker.com/engine/containers/start-containers-automatically/).
 
-### Evidencia y pendientes de validación
+### Evidencia de validación del release de NM-D2
 
-La consulta de solo lectura del 12 de octubre de 2026 observó:
+El 12 de octubre de 2026 se desplegó y validó el release
+`c5cc1be990b8b98c723e70824bd78741d2821c5f`, construido en la VM desde un archivo
+de los archivos versionados de esa revisión. No se copiaron archivos `.env` ni
+credenciales del equipo local; se conservó el `runtime.env` existente.
+
+Imágenes utilizadas:
+
+| Servicio | Tag | ID de imagen |
+|---|---|---|
+| Backend | `nuevamente-backend:nm-d2-c5cc1be` | `sha256:92d6326c9e7b4becd2d2777cd3c8f54b3ba6baafd8e1f4814601b36da1ccadca` |
+| Frontend | `nuevamente-frontend:nm-d2-c5cc1be` | `sha256:4221ca3b082f62e49ec2ef98e6c15f54589a1e2b3d8488c07b700e1a8e922b6b` |
 
 | Comprobación | Resultado |
 |---|---|
-| Backend y frontend | Ambos `healthy`, con imágenes etiquetadas `develop-c4f92ad`. |
+| Backend y frontend | Ambos `healthy`; etiqueta de revisión completa coincidente con el release. |
 | `docker port nuevamente-backend-1` | Salida vacía. |
 | Puertos publicados de ambos contenedores | `PortBindings={}`. |
-| Política de reinicio | `unless-stopped` en ambos servicios; no se simuló una caída. |
-| Configuración del backend | Importación de `Settings` exitosa con `instance_principal`; valores de ventanas 5 y 2000. |
-| Portada pública | HTTP 200 desde fuera de la VM. |
-| Acceso externo directo a `:8000/api/v1/health` | Timeout a los 10 segundos, sin respuesta HTTP, con la portada accesible. |
+| Recuperación automática | Se terminó el proceso hijo de cada servicio por separado. Cada `RestartCount` pasó de 0 a 1, manteniendo el ID del contenedor y recuperando `healthy`, sin reinicio manual. |
+| Configuración del backend | `USE_MOCK_LLM=false`, autenticación Instance Principal y modelo real `gemini-3.1-flash-lite`. |
+| Portada pública | HTTP 200 desde fuera de la VM tras la recuperación. Durante la caída simulada hubo indisponibilidad transitoria, esperable en una sola réplica. |
+| Acceso externo directo a 8000 y 8501 | Timeout de conexión, sin respuesta HTTP. |
+| Routing | Frontend con regla `Host` de NuevaMente; backend sin router Traefik. |
+| Persistencia vectorial | Se conservó el volumen `nuevamente-chroma-data` en `/app/chroma_db`. |
+| Servicios compartidos | Traefik y la otra aplicación conservaron sus contenedores y hora de inicio. |
 
-Estos resultados corresponden al despliegue existente. No demuestran que los
-ajustes de este PR ya estén desplegados. Antes de integrar, adjuntar al PR el
-SHA y las imágenes del nuevo release, los resultados de reinicio y acceso externo,
-una generación completa con ambos objetos almacenados y la confirmación de
-Always Free. La prueba histórica siguiente no sustituye esa validación.
+La API de OCI confirmó una security list sin reglas de ingreso y un NSG con
+SSH limitado a `/32`, HTTP 80 y HTTPS 443 públicos. El 443 pertenece a la
+plataforma compartida y no se modificó. `firewalld` reportó servicios
+`dhcpv6-client http ssh`, sin puertos adicionales configurados en la zona
+predeterminada. La comprobación externa complementa esta inspección.
+
+Durante el trabajo cambió la IP pública del operador. Con autorización se
+actualizó únicamente el origen `/32` de SSH mediante Terraform: plan y apply
+con **0 added, 1 changed, 0 destroyed**, y plan posterior sin cambios. No se
+ampliaron permisos IAM ni se modificaron otros recursos.
+
+Se conservaron el release y las imágenes anteriores para rollback. Después de
+construir ambas imágenes quedaron aproximadamente **2,8 GB libres de 30 GB** en
+el filesystem raíz. Antes de acumular más builds, revisar el espacio y acordar
+una limpieza controlada; esta validación no eliminó imágenes ni volúmenes.
 
 ### Prueba end-to-end y persistencia en Object Storage
+
+La validación del release `c5cc1be` se realizó con `AppTest` dentro del
+contenedor frontend, ejecutando `/app/app.py` sin mocks: carga de Markdown
+sintético de 1112 bytes, selección predeterminada Principiante/Tutorial y envío
+del formulario contra el backend real. La generación tardó **35,97 segundos**,
+devolvió tres pasos y `status_upload=completado`. Se verificaron mediante
+Instance Principal los dos objetos exactos:
+
+```text
+originales/6d4f3140e9c6006c-nm-d2-validacion-c5cc1be.md
+contenido-nm-d2-validacion-c5cc1be-principiante-tutorial-419fa2c7a531.json
+```
+
+El original descargado coincidió con su SHA-256 y el JSON almacenado validó
+contra `OutputSchema`, con título coincidente y carga completada. Esto verifica
+el recorrido funcional frontend → API → Gemini → OCI. La portada pública se
+comprobó por HTTP por separado; no se realizó una prueba de interacción visual
+en navegador ni una prueba de documentos largos. Ambos artefactos sintéticos
+se conservaron como evidencia.
 
 Con `USE_MOCK_LLM=false`, cargar un documento admitido desde la URL pública de
 Streamlit y solicitar una generación. La interfaz debe confirmar que la
