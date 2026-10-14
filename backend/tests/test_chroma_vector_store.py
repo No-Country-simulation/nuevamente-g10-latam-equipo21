@@ -185,3 +185,44 @@ def test_integracion_con_recuperacion_y_ensamblado(tmp_path):
     assert "guia de python para datos" in contexto
     assert "documento=doc-001" in contexto
     assert "pagina=1" in contexto
+
+def test_diagrama_conserva_metadatos_de_origen(tmp_path):
+    """Un chunk de diagrama conserva su trazabilidad al recuperarse desde Chroma."""
+
+    diagrama = TextChunk(
+        document_id="doc-diagrama",
+        chunk_index=0,
+        text="diagrama python conectado a una base de datos",
+        page_number=3,
+        char_start=0,
+        char_end=len("diagrama python conectado a una base de datos"),
+        source_type="diagram",
+        image_index=2,
+        image_name="arquitectura.png",
+    )
+
+    store = _store_con([diagrama], tmp_path)
+    vector_store = ChromaVectorStore(store)
+
+    resultados = vector_store.buscar_similares(
+        texto_consulta="python",
+        top_k=1,
+        documento_id="doc-diagrama",
+    )
+
+    assert len(resultados) == 1
+
+    metadata = resultados[0].metadatos
+
+    assert metadata["pagina"] == 3
+    assert metadata["source_type"] == "diagram"
+    assert metadata["image_index"] == 2
+    assert metadata["image_name"] == "arquitectura.png"
+
+    contexto = ensamblar_contexto(resultados)
+
+    assert "diagrama python conectado a una base de datos" in contexto
+    assert "source_type=diagram" in contexto
+    assert "pagina=3" in contexto
+    assert "image_index=2" in contexto
+    assert "image_name=arquitectura.png" in contexto

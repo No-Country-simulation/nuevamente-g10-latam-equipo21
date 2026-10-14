@@ -100,16 +100,25 @@ class ChromaStore:
             for chunk in chunks
         ]
 
-        metadatas = [
-            {
+        metadatas = []
+
+        for chunk in chunks:
+            metadata = {
                 "document_id": chunk.document_id,
                 "chunk_index": chunk.chunk_index,
                 "page_number": chunk.page_number,
                 "char_start": chunk.char_start,
                 "char_end": chunk.char_end,
+                "source_type": chunk.source_type,
             }
-            for chunk in chunks
-        ]
+
+            if chunk.image_index is not None:
+                metadata["image_index"] = chunk.image_index
+
+            if chunk.image_name is not None:
+                metadata["image_name"] = chunk.image_name
+
+            metadatas.append(metadata)
 
         self.collection.upsert(
             ids=ids,

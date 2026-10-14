@@ -8,6 +8,7 @@ from app.schemas.enums import (
     PerfilDestinatario,
 )
 
+
 class DocumentoPaginaSchema(PublicSchema):
     page_number: StrictInt = Field(
         ...,
@@ -19,6 +20,32 @@ class DocumentoPaginaSchema(PublicSchema):
         ...,
         min_length=1,
         description="Texto extraído de esa página",
+    )
+
+
+class DiagramaSchema(PublicSchema):
+    description: StrictStr = Field(
+        ...,
+        min_length=1,
+        description="Descripción técnica generada a partir del diagrama",
+    )
+
+    page_number: StrictInt = Field(
+        ...,
+        ge=1,
+        description="Página del documento donde se encontró el diagrama",
+    )
+
+    image_index: StrictInt = Field(
+        ...,
+        ge=1,
+        description="Posición de la imagen dentro de la página",
+    )
+
+    image_name: StrictStr = Field(
+        ...,
+        min_length=1,
+        description="Nombre de la imagen extraída",
     )
 
 
@@ -41,6 +68,11 @@ class InputSchema(PublicSchema):
             "Páginas del documento de origen, si se conocen. Permite preservar la "
             "trazabilidad de página de los fragmentos recuperados."
         ),
+    )
+
+    diagramas: list[DiagramaSchema] = Field(
+        default_factory=list,
+        description="Diagramas técnicos interpretados del documento original",
     )
 
     perfil_destinatario: PerfilDestinatario = Field(
