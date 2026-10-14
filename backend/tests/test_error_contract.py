@@ -1,8 +1,11 @@
 """NM-21: el sobre de error {"status": "error", "error": {codigo, mensaje}} se aplica
 en todos los endpoints, incluso para errores que llegan como HTTPException (404/405)."""
 
+import pytest
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from app.core.errors import register_exception_handlers
 from app.main import app
 from app.schemas.output import ErrorResponseSchema
 
@@ -37,3 +40,30 @@ def test_el_modelo_del_sobre_acepta_el_cuerpo_del_handler():
 
     assert modelo.error.codigo == "X"
     assert modelo.error.mensaje == "y"
+
+
+SECRETO = "secreto-interno-no-debe-salir"
+
+
+@pytest.mark.parametrize("status_code", [500, 502, 503])
+def test_http_5xx_no_expone_el_detalle_interno(status_code):
+    """Un HTTPException 5xx no debe filtrar el detalle técnico al cliente (solo al log)."""
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/boom")
+    def boom():
+        raise HTTPException(
+            status_code=status_code,
+            detail=f"detalle interno api_key={SECRETO}",
+        )
+
+    app_client = TestClient(app, raise_server_exceptions=False)
+    response = app_client.get("/boom")
+
+    assert response.status_code == status_code
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["error"]["codigo"] == "ERROR_INTERNO"
+    assert SECRETO not in response.text
+    assert "detalle interno" not in response.text

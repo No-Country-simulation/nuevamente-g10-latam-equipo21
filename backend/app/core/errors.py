@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.request_context import get_request_id, request_id_de
-from app.core.log_sanitizer import error_sanitizado
+from app.core.log_sanitizer import error_sanitizado, sanitizar_texto
 
 logger = logging.getLogger("nuevamente.errors")
 
@@ -126,6 +126,20 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         # NM-21: ningún endpoint debe devolver {"detail": ...}; se envuelve en el contrato.
         # Se registra sobre la base de Starlette para capturar también los 404/405 del router.
+        if exc.status_code >= 500:
+            # Errores de servidor (5xx): el detalle técnico va SOLO al log; al cliente, mensaje
+            # genérico, para no filtrar internos.
+            logger.error(
+                "[%s] %s (%s) en %s %s | detalle: %s",
+                request_id_de(request), AppError.codigo, exc.status_code,
+                request.method, request.url.path,
+                sanitizar_texto(str(exc.detail)) if exc.detail else "n/a",
+            )
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=error_body(AppError.codigo, AppError.mensaje),
+                headers=exc.headers,
+            )
         mensaje = str(exc.detail) if exc.detail else "La solicitud no pudo completarse."
         logger.warning(
             "[%s] %s (%s) en %s %s",
