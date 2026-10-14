@@ -83,14 +83,11 @@ La descripción completa y los contratos de datos se encuentran en [`docs/ARCHIT
 | Pipeline lineal | Integrado en `POST /api/v1/adaptar-contenido`. |
 | Flujo multi-agente | Implementado y probado mediante script; exposición desde el endpoint en revisión en NM-28 ([#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83)), todavía no integrada. |
 | Frontend Streamlit | Implementado y conectado a los endpoints de extracción y adaptación de FastAPI. |
-| Despliegue OCI Compute | Entorno desplegado y validado: Streamlit público, FastAPI sin publicación directa y persistencia real en Object Storage. Configuración de despliegue pendiente de integración en NM-D2 ([#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60)). |
+| Despliegue OCI Compute | Integrado mediante NM-D2 ([#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60)): Streamlit público, FastAPI sin publicación directa y persistencia real en Object Storage. Validación funcional con un documento corto de 1112 bytes y un escenario Principiante/Tutorial. |
 | Vínculo entre original y paquete | Pendiente de completar en NM-27: los objetos se persisten, pero el paquete todavía no referencia al original. |
 | Contrato uniforme de errores | Pendiente en NM-21 para los casos que aún responden fuera del sobre común. |
 
 ## Estructura del repositorio
-
-La sección `deploy/oci/` corresponde a NM-D2 y estará disponible en `develop`
-cuando se integre el PR [#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60).
 
 ```text
 backend/
@@ -298,10 +295,12 @@ y recuperar desde OCI Vault la clave de Gemini sin versionarla.
 
 La construcción de imágenes, configuración de Vault, inicio de servicios,
 health checks y prueba end-to-end de persistencia están documentados en
-la [guía de NM-D2](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/blob/db40875a0addb9fa5526127dec903cf31200bb84/deploy/oci/README.md).
-El PR [#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60)
-debe integrarse antes que la actualización de documentación de NM-16
-([#65](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/65)).
+[`deploy/oci/README.md`](deploy/oci/README.md).
+
+La validación funcional del release utilizó un documento de 1112 bytes y el
+escenario Principiante/Tutorial mediante `AppTest`, con backend y proveedores
+reales. El acceso HTTP público se comprobó por separado. No se probó una
+generación completa desde el navegador ni el comportamiento con documentos largos.
 
 ## Ejecución
 
@@ -505,8 +504,7 @@ Ejemplo de entrada inválida:
 
 La tabla distingue lo que ya está integrado de lo aprobado o todavía pendiente. No se asignan fechas de integración a cambios que aún no ingresaron en `develop`.
 
-Estados revisados al 13 de octubre de 2026. Las fechas previstas se indican en
-el estado y no sustituyen la fecha efectiva de integración.
+Estados revisados al 14 de octubre de 2026.
 
 | Fecha de integración (UTC) | Ticket | Entrega | Responsable | PR o referencia | Revisión | Estado |
 |---|---|---|---|---|---|---|
@@ -525,7 +523,7 @@ el estado y no sustituyen la fecha efectiva de integración.
 | 5 oct 2026 | NM-13 | Carga de documentos y selección de parámetros desde Streamlit. | Julio Diaz | [#58](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/58) | Leandro Melchiori | Integrado |
 | 5 oct 2026 | NM-14 | Visualización de los cinco formatos educativos. | Ever Ayala | [#59](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/59) | Leandro Melchiori | Integrado |
 | 8 oct 2026 | NM-15 | Descarga del paquete educativo en JSON. | Gustavo | [#61](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/61) | Leandro Melchiori / Julio Diaz | Integrado |
-| — | NM-16 | README, arquitectura, instalación y documentación del proyecto. | Leandro Melchiori | [#57](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/57), [#65](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/65) | [Gustavo: aprobación de la entrega base](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/57#pullrequestreview-5403108877) | Actualización en draft con revisión recibida; depende de NM-D2 |
+| — | NM-16 | README, arquitectura, instalación y documentación del proyecto. | Leandro Melchiori | [#57](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/57), [#65](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/65) | [Gustavo: aprobación de la entrega base](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/57#pullrequestreview-5403108877) | Actualización en draft; pendiente de aprobación e integración |
 | — | NM-17 | Tres escenarios y guion de demostración. | Bianca Zorio | [Issue #23](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/23) | — | Ticket cerrado; pendiente de enlazar las evidencias de demo |
 | 29 sep 2026 | NM-18 | Endpoint mock para desbloquear el frontend. | Gustavo | [#33](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/33) | Leandro Melchiori | Integrado |
 | 7 y 8 oct 2026 | NM-19 | Estado de sesión y conservación del resultado en Streamlit. | Julio Diaz | [#66](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/66), [#68](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/68) | Leandro Melchiori | Integrado |
@@ -539,7 +537,7 @@ el estado y no sustituyen la fecha efectiva de integración.
 | — | NM-27 | Persistencia end-to-end y vínculo entre original y paquete. | Miguel Acosta | [#70](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/70) | — | En revisión; requiere completar criterios |
 | — | NM-28 | Exposición del flujo multiagente desde el endpoint. | Gustavo | [Issue #55](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/55), [#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83) | — | En revisión; no integrado |
 | 1 oct 2026 | NM-D1 | Flujo multiagente con Investigador, Redactor y Crítico. | Ever Ayala | [#45](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/45) | Leandro Melchiori | Integrado |
-| — | NM-D2 | Despliegue de Streamlit y FastAPI en OCI Compute. | Leandro Melchiori | [#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60) | Gustavo: revisión recibida | En revisión; integración prevista para el 13 oct 2026 (Argentina), aún no realizada |
+| 14 oct 2026 | NM-D2 | Despliegue de Streamlit y FastAPI en OCI Compute. | Leandro Melchiori | [#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60) | [Gustavo: aprobación](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60#pullrequestreview-5512508948) | Integrado |
 | — | NM-D3 | Quiz interactivo con retroalimentación inmediata. | Julio Diaz | [Issue #26](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/26) | — | En desarrollo según la revisión del equipo; issue abierto, no integrado |
 | — | NM-D4 | Interpretación de diagramas técnicos. | Jeampiero Gonzalez | [Issue #27](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/27), [#82](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/82) | — | En revisión; no integrado |
 | — | NM-D5 | Exportación a Markdown, PDF y CSV para Anki. | Hernan Rojas | [Issue #28](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/28) | — | Opcional; no incluido en la entrega actual |
@@ -560,5 +558,5 @@ Las ramas de funcionalidad se crean desde `develop` con el formato `feature/NM-X
 ## Documentación adicional
 
 - [Arquitectura y contratos](docs/ARCHITECTURE.md)
-- [Despliegue en OCI Compute — guía de NM-D2, pendiente de integración](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/blob/db40875a0addb9fa5526127dec903cf31200bb84/deploy/oci/README.md)
+- [Despliegue en OCI Compute](deploy/oci/README.md)
 - [Guía de contribución](CONTRIBUTING.md)
