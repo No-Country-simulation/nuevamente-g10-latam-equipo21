@@ -50,11 +50,12 @@ La plataforma OCI debe proporcionar:
   `/etc/docker-platform/apps/nuevamente/runtime.env` con permisos `0600`.
 
 Este repositorio contiene únicamente la configuración de la aplicación. Los
-recursos compartidos se administran en
+recursos compartidos se administran en el repositorio público
 [infrastructure-as-code](https://github.com/LeandroMelchiori/infrastructure-as-code).
 La referencia de implementación local es `oci/docker-platform` y el caso práctico
-`oci/case-studies/nuevamente-dev-oci.md` de ese repositorio. Si el evaluador no
-tiene acceso a la IaC, los requisitos mínimos son:
+`oci/case-studies/nuevamente-dev-oci.md` de ese repositorio. Su visibilidad pública
+se confirmó el 14 de octubre de 2026. Para reproducir la plataforma sin depender
+de esa IaC, los requisitos mínimos son:
 
 1. VM Linux ARM64 con Docker Engine, Compose v2 o posterior y OCI CLI instalada.
    La instancia consultada el 12 de octubre de 2026 usa `VM.Standard.A1.Flex`,
@@ -163,7 +164,8 @@ de retirada es el 7 de mayo de 2027. La actualización se evaluará por separado
 mediante pruebas de calidad, fidelidad, tiempos de respuesta y cuotas.
 
 Se mantiene el timeout de 60 segundos utilizado en la validación del despliegue.
-Su suficiencia para documentos largos queda pendiente de pruebas.
+Su suficiencia para documentos largos queda pendiente de pruebas: una llamada
+al proveedor puede exceder ese límite y hacer fallar la generación.
 
 NM-25 exige `GEMINI_API_KEY` y `OCI_NAMESPACE` no vacíos cuando se usa el pipeline
 real. Compose fija `USE_MOCK_LLM=false` y `OCI_AUTH_MODE=instance_principal`;
@@ -299,12 +301,23 @@ esa estructura, aborta antes de enviar la señal. No usar `docker stop` ni
 `docker kill`: Docker puede registrar una parada manual y suprimir la política
 de reinicio. Ver la [política de reinicio de Docker](https://docs.docker.com/engine/containers/start-containers-automatically/).
 
+Se verificó la recuperación ante la caída de los procesos de la aplicación.
+No se probó la recuperación tras reiniciar el daemon de Docker ni la VM.
+Esas pruebas requieren una ventana coordinada porque la instancia aloja otra
+aplicación.
+
 ### Evidencia de validación del release de NM-D2
 
 El 12 de octubre de 2026 se desplegó y validó el release
 `c5cc1be990b8b98c723e70824bd78741d2821c5f`, construido en la VM desde un archivo
 de los archivos versionados de esa revisión. No se copiaron archivos `.env` ni
 credenciales del equipo local; se conservó el `runtime.env` existente.
+
+Ese release ya incluía la regla `Host` parametrizada con
+`NUEVAMENTE_PUBLIC_HOST`. La comparación con `db40875`, revisado en el PR #60,
+solo muestra cambios posteriores en esta guía: no cambió el código de la
+aplicación, los Dockerfiles ni el Compose. La evidencia siguiente corresponde
+a ese release y no representa una nueva comprobación del estado de la VM.
 
 Imágenes utilizadas:
 
@@ -320,7 +333,7 @@ Imágenes utilizadas:
 | Puertos publicados de ambos contenedores | `PortBindings={}`. |
 | Recuperación automática | Se terminó el proceso hijo de cada servicio por separado. Cada `RestartCount` pasó de 0 a 1, manteniendo el ID del contenedor y recuperando `healthy`, sin reinicio manual. |
 | Configuración del backend | `USE_MOCK_LLM=false`, autenticación Instance Principal y modelo real `gemini-3.1-flash-lite`. |
-| Portada pública | HTTP 200 desde fuera de la VM tras la recuperación. Durante la caída simulada hubo indisponibilidad transitoria, esperable en una sola réplica. |
+| Portada pública | HTTP 200 desde fuera de la VM, con la regla `Host` de `NUEVAMENTE_PUBLIC_HOST` aplicada, tras la recuperación. Durante la caída simulada hubo indisponibilidad transitoria, esperable en una sola réplica. |
 | Acceso externo directo a 8000 y 8501 | Timeout de conexión, sin respuesta HTTP. |
 | Routing | Frontend con regla `Host` de NuevaMente; backend sin router Traefik. |
 | Persistencia vectorial | Se conservó el volumen `nuevamente-chroma-data` en `/app/chroma_db`. |
@@ -358,10 +371,11 @@ contenido-nm-d2-validacion-c5cc1be-principiante-tutorial-419fa2c7a531.json
 
 El original descargado coincidió con su SHA-256 y el JSON almacenado validó
 contra `OutputSchema`, con título coincidente y carga completada. Esto verifica
-el recorrido funcional frontend → API → Gemini → OCI. La portada pública se
-comprobó por HTTP por separado; no se realizó una prueba de interacción visual
-en navegador ni una prueba de documentos largos. Ambos artefactos sintéticos
-se conservaron como evidencia.
+el recorrido funcional frontend → API → Gemini → OCI. `AppTest` no atraviesa
+Traefik: el acceso público se comprobó por HTTP por separado, con resultado 200
+y la regla `Host` aplicada. No se realizó una generación completa desde el
+navegador ni una prueba de documentos largos. Ambos artefactos sintéticos se
+conservaron como evidencia.
 
 Con `USE_MOCK_LLM=false`, cargar un documento admitido desde la URL pública de
 Streamlit y solicitar una generación. La interfaz debe confirmar que la
@@ -378,6 +392,12 @@ oci os object list \
   --query 'data[].{nombre:name,creado:"time-created",tamano:size}' \
   --output table
 ```
+
+### Evidencia histórica: 5 de octubre de 2026
+
+Esta prueba es anterior a las integraciones de NM-22, NM-24 y NM-25. Se conserva
+como antecedente y no sustituye la validación del release `c5cc1be` descrita arriba.
+Las capturas de la descripción inicial del PR #60 corresponden a esta prueba.
 
 La validación end-to-end realizada el 5 de octubre de 2026 con el documento
 `Learn Python in Y Minutes.pdf` confirmó la persistencia de ambos artefactos:
@@ -431,6 +451,12 @@ security lists y firewall antes de afirmar que la VM completa solo expone 80.
 La URL de NuevaMente usa HTTP y no exige autenticación; cualquier visitante puede
 consumir cuota de Gemini y almacenar objetos. La protección del acceso y limpieza
 administrativa se siguen en NM-39. No cargar documentos privados o credenciales.
+
+La VM comparte Traefik, CPU, memoria y disco con otra aplicación; la carga o el
+mantenimiento de la plataforma pueden afectar a ambas. Las cuotas Always Free
+de OCI se comparten en el tenancy. No se ha confirmado que las dos aplicaciones
+compartan también el proyecto o la cuota de Gemini.
+
 Una prueba con documento corto verifica el despliegue, pero no demuestra el
 comportamiento con documentos largos ni sustituye las demos de NM-17. Los límites
 de embeddings y latencia del proveedor deben registrarse por separado si aparecen.
