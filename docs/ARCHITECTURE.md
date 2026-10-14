@@ -5,7 +5,7 @@
 **Estado:** Arquitectura aprobada e implementada para el MVP de backend
 
 > Este documento registra las decisiones técnicas transversales y el contrato compartido por el
-> backend y sus consumidores. Tambien refleja el estado real de implementacion alcanzado por los
+> backend y sus consumidores. También refleja el estado real de implementación alcanzado por los
 > tickets posteriores a NM-01.
 
 ---
@@ -61,8 +61,12 @@ flowchart TD
 orquestación LLM → evaluación de fidelidad → generación de metadatos → persistencia en OCI →
 respuesta JSON. El flujo multi-agente reutiliza retrieval, generación y evaluación, pero todavía
 no está seleccionable desde el endpoint integral. Streamlit está implementado como consumidor de
-los endpoints de extracción y adaptación de FastAPI. En OCI Compute, Traefik publica únicamente
-la interfaz y FastAPI permanece en una red Docker interna.
+los endpoints de extracción y adaptación de FastAPI. En el despliegue de NM-D2, Traefik publica
+únicamente la interfaz. FastAPI no publica puertos en el host ni tiene una ruta en Traefik;
+el frontend lo consume por `backend_internal`. El backend también pertenece a `proxy` para
+el egreso hacia Gemini, OCI y el servicio de metadatos de Instance Principal. Esa red compartida
+no garantiza que solo el frontend pueda acceder al backend. La configuración está pendiente de
+integración en [#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60).
 
 ---
 
@@ -75,7 +79,7 @@ la interfaz y FastAPI permanece en una red Docker interna.
 | **Framework de orquestación** | **LangChain** para el endpoint del MVP y **LangGraph** para el flujo multi-agente experimental | El pipeline lineal es el recorrido estable de la API. LangGraph implementa Investigador RAG, Redactor Pedagógico y Crítico/Revisor con reintentos limitados; su exposición desde el endpoint queda pendiente. |
 | **Stack de interfaz** | **FastAPI (backend) + Streamlit (frontend)** | FastAPI expone la API REST y valida los contratos mediante Pydantic. Streamlit permite cargar documentos, seleccionar los ejes de adaptación y consumir la API sin acoplar lógica de negocio a la interfaz. |
 | **Persistencia** | **OCI Object Storage** (obligatorio) | El bucket privado `nuevamente-contenidos-educativos` almacena documentos originales y JSON generados mediante el SDK de OCI para Python. El pipeline real ya utiliza el adaptador de almacenamiento. |
-| **Despliegue** | **OCI Compute + Docker Compose + Traefik** | FastAPI y Streamlit se ejecutan como procesos separados. Solo Streamlit queda expuesto; FastAPI utiliza la red interna. La VM accede a Vault y Object Storage mediante Instance Principal. |
+| **Despliegue** | **OCI Compute + Docker Compose + Traefik** | FastAPI y Streamlit se ejecutan en contenedores separados. Solo Streamlit se publica mediante Traefik. FastAPI no publica puertos en el host ni tiene ruta en Traefik; comparte `backend_internal` con el frontend y utiliza además `proxy` para el egreso. La VM accede a Vault y Object Storage mediante Instance Principal. Configuración pendiente de integrar con NM-D2 (#60). |
 
 ---
 
@@ -258,11 +262,15 @@ Prefijos: `feat`, `fix`, `docs`, `chore`, `test`, `refactor`.
 - [x] Pipeline RAG lineal con Gemini, evaluación de fidelidad y metadatos implementado.
 - [x] Persistencia de documentos y paquetes generados integrada con OCI Object Storage.
 - [x] Flujo multi-agente con LangGraph implementado y probado mediante script.
-- [ ] Selección del flujo multi-agente desde el endpoint integral.
+- [ ] Selección del flujo multi-agente desde el endpoint integral: NM-28, en revisión en [#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83), todavía no integrado.
 - [x] Frontend Streamlit conectado al contrato de la API.
-- [x] Despliegue completo de FastAPI y Streamlit sobre OCI Compute.
+- [x] Entorno de FastAPI y Streamlit desplegado y validado sobre OCI Compute (NM-D2); esto no implica que su PR esté integrado.
+- [ ] Integración de la configuración de despliegue NM-D2 en `develop` ([#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60)), previa a NM-16. Prevista para el 13 de octubre de 2026 (Argentina), pendiente de confirmación.
 - [ ] Vínculo persistente entre el documento original y el paquete generado (NM-27).
 - [ ] Contrato uniforme de errores para todos los endpoints (NM-21).
-- [ ] Escenarios, guion y ensayo de la demostración final (NM-17).
+- [x] Ticket de demostración NM-17 cerrado en GitHub ([#23](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/23)).
+- [ ] Enlazar y verificar las evidencias de NM-17: documento fuente, tres JSON, guion y ensayo. El cierre del ticket no confirma por sí solo su disponibilidad en el repositorio.
 - [ ] Integración final de `develop` en `main`, tag y limpieza de ramas (NM-26).
-- [ ] Funcionalidades opcionales NM-D3, NM-D4 y NM-D5.
+- [ ] Quiz interactivo NM-D3: issue abierto y asignado a Julio Diaz; en desarrollo según la revisión del equipo, todavía no integrado.
+- [ ] Interpretación de diagramas NM-D4: en revisión en [#82](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/82), asignado a Jeampiero Gonzalez, todavía no integrado.
+- [ ] Exportaciones adicionales NM-D5, todavía no integradas.
