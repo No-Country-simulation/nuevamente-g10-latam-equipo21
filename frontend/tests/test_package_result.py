@@ -24,7 +24,7 @@ FORMAT_CASES = [
             "respuesta_correcta": "Aislar la red",
             "justificacion": "Permite controlar el tráfico.",
         },
-        ["¿Para qué sirve una VCN?", "Editar imágenes", "Permite controlar el tráfico."],
+        ["¿Para qué sirve una VCN?"],
     ),
     (
         "Tutorial",
@@ -136,20 +136,72 @@ def test_each_format_renders_content_and_common_header(
     assert len(app.json) == 0
 
 
-def test_quiz_answer_and_justification_are_inside_closed_expander():
+def test_quiz_shows_feedback_and_justification_after_answering():
     _, item, _ = FORMAT_CASES[1]
     app = render_result(make_result("Quiz", item))
 
     assert not app.exception
-    expander = app.expander[0]
-    assert expander.label == "Ver respuesta y justificación"
-    assert expander.proto.expanded is False
+    assert app.radio[0].value is None
+    assert app.radio[0].options == ["Aislar la red", "Editar imágenes"]
+    assert len(app.info) == 0
 
-    text = "\n".join(element.value for element in expander.markdown)
-    assert "Respuesta correcta" in text
-    assert "Aislar la red" in text
-    assert "Justificación" in text
-    assert "Permite controlar el tráfico." in text
+    app.radio[0].set_value("Editar imágenes")
+    app.run()
+
+    assert not app.exception
+    assert any("Incorrecto" in message.value for message in app.error)
+    assert any("Permite controlar el tráfico." in message.value for message in app.info)
+
+
+def test_quiz_score_and_retry_reset_answers():
+    items = [
+        {
+            "pregunta": "¿Para qué sirve una VCN?",
+            "opciones": ["Aislar la red", "Editar imágenes"],
+            "respuesta_correcta": "Aislar la red",
+            "justificacion": "Permite controlar el tráfico.",
+        },
+        {
+            "pregunta": "¿Qué controla el tráfico?",
+            "opciones": ["Security Lists", "Flashcards"],
+            "respuesta_correcta": "Security Lists",
+            "justificacion": "Las listas definen reglas de tráfico.",
+        },
+    ]
+    result = make_result("Quiz", items[0])
+    result["contenido_adaptado"]["items"] = items
+    app = AppTest.from_string(
+        f"""
+import sys
+sys.path.insert(0, {str(FRONTEND_DIR)!r})
+from components.package_result import render_package_result
+render_package_result({result!r})
+""",
+        default_timeout=10,
+    ).run()
+
+    assert not app.exception
+    app.radio[0].set_value("Editar imágenes")
+    app.run()
+    app.radio[1].set_value("Security Lists")
+    app.run()
+
+    assert not app.exception
+    assert any("¡Correcto!" in message.value for message in app.success)
+    metrics = {metric.label: metric.value for metric in app.metric}
+    assert metrics["Puntaje final"] == "50%"
+    assert metrics["Aciertos"] == "1 de 2"
+    assert len(app.button) == 1
+
+    previous_widget_keys = [radio.key for radio in app.radio]
+    app.button[0].click()
+    app.run()
+
+    assert not app.exception
+    assert [radio.key for radio in app.radio] != previous_widget_keys
+    assert [radio.value for radio in app.radio] == [None, None]
+    assert "Puntaje final" not in {metric.label for metric in app.metric}
+    assert app.session_state["quiz_answers"] == {}
 
 
 def test_completed_upload_shows_confirmation_bucket_and_object():

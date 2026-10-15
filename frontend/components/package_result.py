@@ -1,5 +1,8 @@
 """Visualización del paquete educativo generado."""
 
+import hashlib
+import json
+
 import streamlit as st
 
 
@@ -18,23 +21,59 @@ def render_flashcards(items: list[dict]) -> None:
 
 
 def render_quiz(items: list[dict]) -> None:
+    quiz_signature = hashlib.sha256(
+        json.dumps(items, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    if st.session_state.get("quiz_signature") != quiz_signature:
+        st.session_state["quiz_signature"] = quiz_signature
+        st.session_state["quiz_answers"] = {}
+        st.session_state["quiz_attempt"] = 0
+
+    answers = st.session_state.setdefault("quiz_answers", {})
+    attempt = st.session_state.setdefault("quiz_attempt", 0)
+
     for number, item in enumerate(items, 1):
         with st.container(border=True):
             st.subheader(f"Pregunta {number}")
             st.write(item["pregunta"])
 
-            for option in item["opciones"]:
-                st.write(f"• {option}")
+            options = item["opciones"]
+            answer_key = f"quiz_answer_{quiz_signature}_{attempt}_{number}"
+            previous_answer = answers.get(str(number))
+            selected_index = (
+                options.index(previous_answer) if previous_answer in options else None
+            )
+            selected_option = st.radio(
+                "Selecciona una opción",
+                options,
+                index=selected_index,
+                key=answer_key,
+            )
 
-            with st.expander(
-                "Ver respuesta y justificación",
-                expanded=False,
-            ):
-                st.markdown("**Respuesta correcta**")
-                st.write(item["respuesta_correcta"])
+            if selected_option is not None:
+                answers[str(number)] = selected_option
+                if selected_option == item["respuesta_correcta"]:
+                    st.success("¡Correcto!")
+                else:
+                    st.error(
+                        f"Incorrecto. La respuesta correcta es: {item['respuesta_correcta']}"
+                    )
+                st.info(f"Justificación: {item['justificacion']}")
 
-                st.markdown("**Justificación**")
-                st.write(item["justificacion"])
+    if items and len(answers) == len(items):
+        correct_answers = sum(
+            answers[str(number)] == item["respuesta_correcta"]
+            for number, item in enumerate(items, 1)
+        )
+        score = round(correct_answers / len(items) * 100)
+        score_column, correct_column = st.columns(2)
+        score_column.metric("Puntaje final", f"{score}%")
+        correct_column.metric("Aciertos", f"{correct_answers} de {len(items)}")
+
+        if st.button("Reintentar", key=f"quiz_retry_{quiz_signature}"):
+            answers.clear()
+            st.session_state["quiz_attempt"] = attempt + 1
+            st.rerun()
 
 
 def render_tutorial(items: list[dict]) -> None:
