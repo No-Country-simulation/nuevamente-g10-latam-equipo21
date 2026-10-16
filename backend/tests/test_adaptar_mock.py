@@ -86,6 +86,7 @@ def test_entrada_invalida_devuelve_shape_de_error_del_contrato():
 
 def test_mock_se_apaga_por_variable_de_entorno(monkeypatch):
     monkeypatch.setattr(settings, "USE_MOCK_LLM", False)
+    monkeypatch.setattr(settings, "USE_MULTIAGENT", False)
     payload = {**PAYLOAD_BASE, "formato_salida": "Flashcards"}
 
     from app.services.mock_adaptacion_service import construir_respuesta_mock

@@ -72,6 +72,17 @@ class AdaptacionMultiAgenteService(AdaptacionService):
             LLMError,
             lambda: self._grafo.invoke(self._estado_inicial(payload, ctx)),
         )
+        faltantes = [
+            clave
+            for clave in ("contenido_adaptado", "evaluacion_calidad")
+            if estado.get(clave) is None
+        ]
+        if faltantes:
+            logger.error(
+                "[%s] el grafo devolvió un estado incompleto: faltan %s", rid, faltantes
+            )
+            raise LLMError()
+
         contenido = estado["contenido_adaptado"]
         evaluacion = estado["evaluacion_calidad"]
 

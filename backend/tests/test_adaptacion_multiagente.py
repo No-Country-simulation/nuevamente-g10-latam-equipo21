@@ -188,3 +188,31 @@ def test_el_mock_tiene_prioridad_sobre_el_flag(monkeypatch):
     monkeypatch.setattr(dependencies.settings, "USE_MULTIAGENT", True)
 
     assert isinstance(dependencies.get_adaptacion_service(), dependencies.MockAdaptacionService)
+
+
+@pytest.mark.parametrize("clave", ["contenido_adaptado", "evaluacion_calidad"])
+@pytest.mark.parametrize("modo", ["ausente", "none"])
+def test_estado_incompleto_del_grafo_se_traduce_a_llm_error(clave, modo):
+    base = construir_respuesta_mock(_payload())
+    estado = _estado_final(base)
+    if modo == "ausente":
+        del estado[clave]
+    else:
+        estado[clave] = None
+    servicio, _ = _servicio(_FakeGrafo(estado=estado), storage=_FakeStorage())
+
+    with pytest.raises(LLMError):
+        servicio.adaptar(_payload())
+
+
+def test_estado_incompleto_no_persiste_nada_en_oci():
+    base = construir_respuesta_mock(_payload())
+    estado = _estado_final(base)
+    del estado["evaluacion_calidad"]
+    storage = _FakeStorage()
+    servicio, _ = _servicio(_FakeGrafo(estado=estado), storage=storage)
+
+    with pytest.raises(LLMError):
+        servicio.adaptar(_payload())
+
+    assert storage.paquetes == []
