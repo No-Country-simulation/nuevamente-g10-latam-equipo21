@@ -177,6 +177,7 @@ def test_flag_mock_y_501_sin_cablear(monkeypatch):
     r = c.post(URL, json=PAYLOAD)
     assert r.status_code == 200 and "MOCK" in r.json()["evaluacion_calidad"]["observaciones"]
     monkeypatch.setattr(settings, "USE_MOCK_LLM", False)
+    monkeypatch.setattr(settings, "USE_MULTIAGENT", False)
     from app.services.mock_adaptacion_service import construir_respuesta_mock
 
     llamados = []
