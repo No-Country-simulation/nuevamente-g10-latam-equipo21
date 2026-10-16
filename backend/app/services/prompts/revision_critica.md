@@ -6,10 +6,10 @@ Contenido anterior completo:
 Feedback de la revisión:
 {feedback_critico}
 
-Generá una versión completa corregida del contenido anterior,
+Genera una versión completa corregida del contenido anterior,
 aplicando específicamente las observaciones del Agente Crítico.
 
-Mantené:
+Mantén:
 - el mismo formato solicitado;
 - el mismo perfil del destinatario;
 - el mismo nicho;
