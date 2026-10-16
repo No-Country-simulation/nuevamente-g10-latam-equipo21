@@ -66,6 +66,15 @@ class PipelineNoConfiguradaError(AppError):
     mensaje = "La pipeline de adaptación aún no está disponible en este entorno."
 
 
+class DocumentoInsuficienteError(AppError):
+    status_code = 422
+    codigo = "DOCUMENTO_INSUFICIENTE"
+    mensaje = (
+        "El documento no contiene suficiente información para el formato solicitado. "
+        "Agrega más contenido de la fuente antes de generar el material."
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(request: Request, exc: AppError) -> JSONResponse:
@@ -88,4 +97,4 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=500,
             content=error_body(AppError.codigo, AppError.mensaje),
-        )        
+        )

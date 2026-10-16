@@ -103,7 +103,7 @@ class LLMProviderFake:
                 {
                     "afirmaciones": [
                         {
-                            "item": posicion + 1,
+                            "item": 1,  # el redactor falso genera un único item
                             "texto": f"Afirmación {posicion + 1}",
                             "respaldada": respaldada,
                         }

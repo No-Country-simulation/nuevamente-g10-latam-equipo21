@@ -12,7 +12,11 @@ _EJEMPLO_ERROR = lambda codigo, mensaje: {  # noqa: E731
 
 _EJEMPLO_REQUEST = {
     "documento_titulo": "Introduccion a la Arquitectura de Redes VCN en OCI",
-    "documento_contenido": "La Virtual Cloud Network (VCN) es una red privada y personalizable en OCI...",
+    "documento_contenido": (
+        "La Virtual Cloud Network (VCN) es una red privada y personalizable en OCI. "
+        "Permite definir subredes y reglas de seguridad para controlar el tráfico. "
+        "Cada subred pertenece a una VCN y utiliza un rango de direcciones IP."
+    ),
     "perfil_destinatario": "Principiante",
     "formato_salida": "Flashcards",
     "nicho_sector": "General",
@@ -45,6 +49,9 @@ _EJEMPLO_RESPUESTA_200 = {
         "anclaje_fuente_score": 0.9,
         "claridad_pedagogica": "Alta",
         "observaciones": "Contenido respaldado por el documento fuente.",
+        "umbral_fidelidad": 0.7,
+        "requiere_revision": False,
+        "afirmaciones_no_respaldadas": [],
     },
     "almacenamiento_oci": {
         "bucket": "nuevamente-contenidos-educativos",
@@ -59,11 +66,15 @@ _EJEMPLO_RESPUESTA_200 = {
     response_model=OutputSchema,
     responses={
         200: {
-            "description": "Paquete educativo generado, validado y persistido.",
+            "description": "Paquete generado. Consultar evaluacion_calidad para advertencias y almacenamiento_oci para el estado de persistencia.",
             "content": {"application/json": {"example": _EJEMPLO_RESPUESTA_200}},
         },
         422: {
-            "description": "Entrada inválida (campo faltante o valor fuera de enum; el mensaje lista los valores válidos).",
+            "description": (
+                "Entrada inválida, contexto no encontrado o documento demasiado corto. "
+                "DOCUMENTO_INSUFICIENTE indica que no alcanza DOCUMENT_MIN_WORDS; "
+                "no se ejecuta la generación."
+            ),
             "content": _EJEMPLO_ERROR("ENTRADA_INVALIDA", "Campo 'perfil_destinatario': Input should be 'Principiante', ..."),
         },
         502: {

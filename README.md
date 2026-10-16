@@ -60,6 +60,41 @@ El flujo lineal es el recorrido principal del endpoint del MVP. El servicio mult
 
 La descripción completa y los contratos de datos se encuentran en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+### Advertencias de fidelidad (NM-32)
+
+La política se aplica en el backend, sin modificar el cálculo de fidelidad de NM-09.
+`FIDELITY_SCORE_THRESHOLD` (por defecto `0.7`, entre 0 y 1) determina cuándo
+el score queda por debajo del mínimo. Igualar el umbral no se considera estar por debajo.
+Además, cualquier afirmación que el verificador marque sin respaldo requiere revisión,
+aunque el score global supere ese mínimo.
+
+El bloque `evaluacion_calidad` agrega estos campos:
+
+| Campo | Significado |
+|---|---|
+| `umbral_fidelidad` | Umbral aplicado por el backend. |
+| `requiere_revision` | `true` si el score está bajo el umbral o hay afirmaciones sin respaldo. |
+| `afirmaciones_no_respaldadas` | Lista de `{ "item": 1, "texto": "..." }`. El índice 0 representa la introducción y 1..N la posición del item. |
+
+Streamlit muestra el score como porcentaje con un indicador de color y texto respecto
+del umbral. Los resultados observados muestran una advertencia, no una confirmación
+verde de generación. En Quiz se marca visiblemente cada pregunta observada y su respuesta
+se presenta como propuesta pendiente de revisión. Si solo hay un score bajo, sin detalle
+por item, se advierte sobre todas las preguntas. No se regeneran ni eliminan items:
+la regeneración automática queda fuera de NM-32. El detalle se conserva en la respuesta,
+en el JSON descargable y en el paquete enviado a OCI.
+
+Antes de indexar o generar, el flujo real exige `DOCUMENT_MIN_WORDS` palabras (por defecto
+`30`, configurable con un entero positivo). Si no se alcanza, devuelve HTTP 422 con
+`DOCUMENTO_INSUFICIENTE` y la interfaz pide ampliar la fuente. Es un filtro preventivo
+de longitud común a los cinco formatos, no una garantía de suficiencia semántica:
+superarlo no asegura que el documento permita responder cualquier pregunta.
+La evaluación posterior sigue siendo necesaria y depende del verificador.
+
+Los paquetes antiguos pueden tener los nuevos campos ausentes o nulos: se muestran
+sin decisión de calidad, sin asumir un umbral ni aprobarlos. El modo mock devuelve
+una evaluación sintética, no valida la suficiencia de la fuente ni llama a proveedores.
+
 ## Tecnologías principales
 
 | Componente | Tecnología |
@@ -214,6 +249,7 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.35` | Umbral mínimo de similitud. |
 | `RETRIEVAL_MAX_CONTEXT_TOKENS` | `2000` | Límite del contexto ensamblado. |
 | `FIDELITY_SCORE_THRESHOLD` | `0.7` | Umbral de fidelidad contra la fuente. |
+| `DOCUMENT_MIN_WORDS` | `30` | Mínimo preventivo de palabras antes de indexar y generar en el flujo real. |
 | `MULTI_AGENT_MAX_ITERATIONS` | `3` | Máximo de iteraciones Redactor-Crítico del flujo multi-agente. |
 
 ### OCI Object Storage
