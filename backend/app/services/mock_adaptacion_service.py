@@ -25,6 +25,7 @@ la capa de API solo orquesta, la lógica de negocio va en servicios.
 
 
 from app.core.config import settings
+from app.services.quality_policy import aplicar_politica_calidad
 from app.schemas.content import (
     FlashcardItem,
     GuionItem,
@@ -61,10 +62,12 @@ def _base_metadatos(payload: InputSchema, minutos: int, conceptos: list[str]) ->
 
 
 def _base_evaluacion() -> EvaluacionCalidadSchema:
-    return EvaluacionCalidadSchema(
-        anclaje_fuente_score=0.95,
-        claridad_pedagogica="Alta",
-        observaciones="Respuesta MOCK (NM-18) — no proviene de la pipeline RAG real.",
+    return aplicar_politica_calidad(
+        EvaluacionCalidadSchema(
+            anclaje_fuente_score=0.95,
+            claridad_pedagogica="Alta",
+            observaciones="Respuesta MOCK (NM-18) — no proviene de la pipeline RAG real.",
+        )
     )
 
 
