@@ -30,3 +30,6 @@ init_session_state()
     assert app.session_state["last_response"] == {"status": "exito"}
     assert app.session_state["is_loading"] is True
     assert app.session_state["source_filename"] is None
+    assert app.session_state["quiz_signature"] is None
+    assert app.session_state["quiz_answers"] == {}
+    assert app.session_state["quiz_attempt"] == 0

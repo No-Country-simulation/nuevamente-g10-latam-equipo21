@@ -218,6 +218,60 @@ def test_selector_change_preserves_and_renders_last_response(monkeypatch):
 	)
 
 
+def test_quiz_retry_resets_answers_without_calling_backend(monkeypatch):
+	calls = []
+	responses = [
+		FakeResponse({"text": "Texto fuente", "metadata": {}}),
+		FakeResponse(
+			{
+				"status": "exito",
+				"metadatos": {
+					"formato_generado": "Quiz",
+					"tiempo_estimado_estudio_minutos": 5,
+					"conceptos_clave": [],
+				},
+				"contenido_adaptado": {
+					"titulo": "Quiz de prueba",
+					"introduccion_contextualizada": "Responde las preguntas.",
+					"items": [
+						{
+							"pregunta": "¿Qué opción es correcta?",
+							"opciones": ["Correcta", "Incorrecta"],
+							"respuesta_correcta": "Correcta",
+							"justificacion": "La opción correcta coincide con la fuente.",
+						}
+					],
+				},
+				"evaluacion_calidad": {},
+				"almacenamiento_oci": {},
+			}
+		),
+	]
+
+	def fake_request(method, url, **kwargs):
+		calls.append((method, url, kwargs))
+		return responses.pop(0)
+
+	monkeypatch.setattr(requests, "request", fake_request)
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click()
+	app.run()
+
+	assert len(calls) == 2
+	app.radio[0].set_value("Correcta")
+	app.run()
+	assert any(button.label == "Reintentar" for button in app.button)
+
+	next(button for button in app.button if button.label == "Reintentar").click()
+	app.run()
+
+	assert not app.exception
+	assert len(calls) == 2
+	assert app.radio[0].value is None
+
+
 def test_generation_forwards_extracted_pages(monkeypatch):
 	calls = []
 	responses = [
