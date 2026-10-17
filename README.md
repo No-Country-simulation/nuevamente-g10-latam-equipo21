@@ -56,13 +56,14 @@ endpoint -> servicio de adaptación -> RAG / Gemini / evaluación / metadatos
                                 \-> servicio de almacenamiento -> OCI
 ```
 
-El flujo lineal es el recorrido principal del endpoint del MVP. El servicio multi-agente implementado con LangGraph reutiliza retrieval, generación y evaluación para permitir ciclos de revisión controlados, pero todavía se ejecuta mediante un script de comparación y no está seleccionable desde el endpoint integral.
+El endpoint utiliza el flujo lineal por defecto (`USE_MULTIAGENT=false`). Con `USE_MOCK_LLM=false` y `USE_MULTIAGENT=true`, selecciona el servicio multi-agente de LangGraph, que reutiliza retrieval, generación y evaluación para permitir ciclos de revisión controlados. La selección del flujo depende de la configuración del entorno desplegado.
 
 La descripción completa y los contratos de datos se encuentran en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ### Advertencias de fidelidad (NM-32)
 
-La política se aplica en el backend, sin modificar el cálculo de fidelidad de NM-09.
+La política se aplica en el backend, tanto al flujo lineal como al multiagente,
+sin modificar el cálculo de fidelidad de NM-09.
 `FIDELITY_SCORE_THRESHOLD` (por defecto `0.7`, entre 0 y 1) determina cuándo
 el score queda por debajo del mínimo. Igualar el umbral no se considera estar por debajo.
 Además, cualquier afirmación que el verificador marque sin respaldo requiere revisión,
@@ -80,11 +81,13 @@ Streamlit muestra el score como porcentaje con un indicador de color y texto res
 del umbral. Los resultados observados muestran una advertencia, no una confirmación
 verde de generación. En Quiz se marca visiblemente cada pregunta observada y su respuesta
 se presenta como propuesta pendiente de revisión. Si solo hay un score bajo, sin detalle
-por item, se advierte sobre todas las preguntas. No se regeneran ni eliminan items:
-la regeneración automática queda fuera de NM-32. El detalle se conserva en la respuesta,
+por item, se advierte sobre todas las preguntas. NM-32 no agrega regeneración ni elimina
+items. El flujo multiagente conserva sus ciclos de revisión de NM-28; las advertencias
+se aplican al resultado final, incluso si agotó los reintentos o conserva afirmaciones
+sin respaldo con un score alto. El detalle se conserva en la respuesta,
 en el JSON descargable y en el paquete enviado a OCI.
 
-Antes de indexar o generar, el flujo real exige `DOCUMENT_MIN_WORDS` palabras (por defecto
+Antes de indexar o generar, ambos flujos reales exigen `DOCUMENT_MIN_WORDS` palabras (por defecto
 `30`, configurable con un entero positivo). Si no se alcanza, devuelve HTTP 422 con
 `DOCUMENTO_INSUFICIENTE` y la interfaz pide ampliar la fuente. Es un filtro preventivo
 de longitud común a los cinco formatos, no una garantía de suficiencia semántica:
@@ -116,7 +119,7 @@ una evaluación sintética, no valida la suficiencia de la fuente ni llama a pro
 |---|---|
 | Backend FastAPI | Implementado: ingesta, RAG, generación, fidelidad, metadatos y persistencia OCI. |
 | Pipeline lineal | Integrado en `POST /api/v1/adaptar-contenido`. |
-| Flujo multi-agente | Implementado y probado mediante script; exposición desde el endpoint en revisión en NM-28 ([#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83)), todavía no integrada. |
+| Flujo multi-agente | Integrado en el endpoint mediante NM-28 ([#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83)), seleccionable con `USE_MULTIAGENT=true` y `USE_MOCK_LLM=false`. |
 | Frontend Streamlit | Implementado y conectado a los endpoints de extracción y adaptación de FastAPI. |
 | Despliegue OCI Compute | Integrado mediante NM-D2 ([#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60)): Streamlit público, FastAPI sin publicación directa y persistencia real en Object Storage. Validación funcional con un documento corto de 1112 bytes y un escenario Principiante/Tutorial. |
 | Vínculo entre original y paquete | Pendiente de completar en NM-27: los objetos se persisten, pero el paquete todavía no referencia al original. |
@@ -234,6 +237,7 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 | `PROJECT_NAME` | `NuevaMente API` | Nombre expuesto por FastAPI. |
 | `VERSION` | `0.1.0` | Versión informativa de la API. |
 | `USE_MOCK_LLM` | `true` | Activa la respuesta mock sin llamadas externas. |
+| `USE_MULTIAGENT` | `false` | Selecciona el grafo multiagente cuando el modo mock está desactivado. Ambos flujos reales aplican la política de NM-32. |
 | `CORS_ORIGINS` | `["http://localhost:8501"]` | Orígenes autorizados para el frontend. |
 
 ### Gemini y RAG
@@ -571,7 +575,7 @@ Estados revisados al 14 de octubre de 2026.
 | 8 oct 2026 | NM-25 | Validación de configuración y protección de credenciales. | Ever Ayala | [#67](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/67) | Leandro Melchiori | Integrado |
 | — | NM-26 | Integración de `develop` en `main`, tag y limpieza de ramas. | Leandro Melchiori | [Issue #53](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/53) | — | Pendiente de la entrega final |
 | — | NM-27 | Persistencia end-to-end y vínculo entre original y paquete. | Miguel Acosta | [#70](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/70) | — | En revisión; requiere completar criterios |
-| — | NM-28 | Exposición del flujo multiagente desde el endpoint. | Gustavo | [Issue #55](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/55), [#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83) | — | En revisión; no integrado |
+| 2026-10-16 | NM-28 | Exposición del flujo multiagente desde el endpoint. | Gustavo | [Issue #55](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/55), [#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83) | `655fad4` | Integrado en develop |
 | 1 oct 2026 | NM-D1 | Flujo multiagente con Investigador, Redactor y Crítico. | Ever Ayala | [#45](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/45) | Leandro Melchiori | Integrado |
 | 14 oct 2026 | NM-D2 | Despliegue de Streamlit y FastAPI en OCI Compute. | Leandro Melchiori | [#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60) | [Gustavo: aprobación](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60#pullrequestreview-5512508948) | Integrado |
 | — | NM-D3 | Quiz interactivo con retroalimentación inmediata. | Julio Diaz | [Issue #26](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/26) | — | En desarrollo según la revisión del equipo; issue abierto, no integrado |
