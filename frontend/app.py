@@ -9,7 +9,12 @@ from components.error_display import render_error
 from components.loading_indicator import loading_indicator
 from components.package_result import render_package_result
 from components.sidebar import render_adaptation_options
-from services.api_client import APIClientError, adapt_document, extract_document
+from services.api_client import (
+    APIClientError,
+    APIConnectionError,
+    adapt_document,
+    extract_document,
+)
 from components.download_json import render_json_download
 from utils.session_state import init_session_state
 
@@ -197,8 +202,12 @@ if submitted:
                 st.session_state["source_filename"] = uploaded_file.name
                 st.success("El contenido educativo se generó correctamente.")
 
-        except APIClientError as error:
+        except APIConnectionError as error:
             st.session_state["api_status"] = False
+            render_error(error.error)
+        except APIClientError as error:
+            # La API respondió con un error (p. ej. validación): la conexión funciona.
+            st.session_state["api_status"] = True
             render_error(error.error)
         finally:
             st.session_state["is_loading"] = False

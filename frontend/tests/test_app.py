@@ -318,3 +318,25 @@ def test_footer_shows_disconnected_when_request_fails(monkeypatch):
 	footer = _footer(app)
 	assert "http://" not in footer
 	assert "Sin conexión con la API" in footer
+
+
+def test_footer_shows_connected_when_api_returns_validation_error(monkeypatch):
+	"""Un error de validación (la API respondió) no debe mostrarse como falta de conexión."""
+	responses = [
+		FakeResponse({"text": "Texto fuente", "metadata": {}}),
+		FakeResponse(
+			{"status": "error", "error": {"codigo": "ENTRADA_INVALIDA", "mensaje": "Campo inválido"}},
+			ok=False,
+		),
+	]
+	monkeypatch.setattr(requests, "request", lambda *a, **k: responses.pop(0))
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click()
+	app.run()
+
+	footer = _footer(app)
+	assert "http://" not in footer
+	assert "API conectada" in footer
+	assert "Sin conexión" not in footer
