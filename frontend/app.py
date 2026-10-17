@@ -56,6 +56,22 @@ def load_styles() -> None:
         )
 
 
+_ESTADO_API = {
+    None: "Servicio de adaptación",
+    True: "API conectada",
+    False: "Sin conexión con la API",
+}
+
+
+def render_status_footnote() -> None:
+    """Pie de estado de la API. Nunca expone la URL interna (NM-38)."""
+    label = _ESTADO_API.get(st.session_state.get("api_status"))
+    st.markdown(
+        f'<div class="api-footnote"><span class="status-dot"></span> {label}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def run_adaptation(
     uploaded_file,
     title: str,
@@ -166,6 +182,7 @@ if submitted:
                     document_title,
                     options,
                 )
+            st.session_state["api_status"] = True
 
             if result.get("status") != "exito":
                 error = result.get("error")
@@ -181,6 +198,7 @@ if submitted:
                 st.success("El contenido educativo se generó correctamente.")
 
         except APIClientError as error:
+            st.session_state["api_status"] = False
             render_error(error.error)
         finally:
             st.session_state["is_loading"] = False
@@ -200,7 +218,4 @@ if result and result.get("status") == "exito":
 else:
     st.caption("El contenido generado aparecerá aquí después de la adaptación.")
 
-st.markdown(
-    f'<div class="api-footnote"><span class="status-dot"></span> API · {API_BASE_URL}</div>',
-    unsafe_allow_html=True,
-)
+render_status_footnote()
