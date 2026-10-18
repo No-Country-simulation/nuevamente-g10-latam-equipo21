@@ -11,8 +11,11 @@ from app.services.adaptacion_adapters import (
 
 
 class FakeChroma:
+    def __init__(self, total=1):
+        self.total = total
+
     def count_document(self, document_id):
-        return 1  # ya indexado: estos tests no ejercitan el chunker
+        return self.total  # ya indexado: estos tests no ejercitan el chunker
 
     def index_chunks(self, chunks):
         return len(chunks)
@@ -23,7 +26,7 @@ def _documento_largo(secciones: int = 5, largo: int = 6000) -> str:
     return "".join(f"SECCION{i} ".ljust(largo, "x") for i in range(secciones))
 
 
-def _adapter(respuestas):
+def _adapter(respuestas, total_chunks=1):
     """`respuestas`: función (consulta, top_k) -> lista de fragmentos."""
     llamadas = []
 
@@ -32,7 +35,7 @@ def _adapter(respuestas):
         return respuestas(consulta, kwargs.get("top_k"))
 
     adapter = ContextoRealAdapter(
-        chroma_store=FakeChroma(),
+        chroma_store=FakeChroma(total_chunks),
         vector_store="vs",
         chunker=lambda **_: [],
         recuperar=recuperar,
@@ -41,8 +44,9 @@ def _adapter(respuestas):
     return adapter, llamadas
 
 
-def _frag(chunk_id):
-    return SimpleNamespace(chunk_id=chunk_id, score=0.9, metadatos={})
+def _frag(chunk_id, indice=None):
+    metadatos = {} if indice is None else {"chunk_index": indice}
+    return SimpleNamespace(chunk_id=chunk_id, score=0.9, metadatos=metadatos)
 
 
 def _payload(contenido):
@@ -113,7 +117,7 @@ def test_deduplica_por_chunk_id():
     assert ctx.texto == "mismo"
 
 
-def test_top_k_se_reparte_y_el_total_queda_acotado():
+def test_pide_candidatos_y_el_total_queda_acotado():
     contador = {"n": 0}
 
     def respuestas(consulta, top_k):
@@ -124,12 +128,36 @@ def test_top_k_se_reparte_y_el_total_queda_acotado():
     adapter, llamadas = _adapter(respuestas)
     ctx = adapter.obtener_contexto(_payload(_documento_largo()))
     ventanas = len(llamadas)
-    por_ventana = max(1, settings.RETRIEVAL_TOP_K // ventanas)
-    assert all(l["kwargs"]["top_k"] == por_ventana for l in llamadas)
-    assert len(ctx.texto.split("|")) <= max(settings.RETRIEVAL_TOP_K, ventanas)
+    previo = max(1, settings.RETRIEVAL_TOP_K // ventanas)
+    candidatos = max(settings.RETRIEVAL_VENTANA_CANDIDATOS, previo)
+    assert all(l["kwargs"]["top_k"] == candidatos for l in llamadas)
+    # sin chunk_index se usa el comportamiento previo: `previo` por ventana
+    assert len(ctx.texto.split("|")) <= ventanas * max(
+        settings.RETRIEVAL_FRAGMENTOS_POR_VENTANA, previo
+    )
 
 
 def test_ventana_sin_resultados_no_rompe():
     adapter, _ = _adapter(lambda c, k: [])
     ctx = adapter.obtener_contexto(_payload(_documento_largo()))
     assert ctx.texto == "" and ctx.fuentes == []
+
+
+def test_filtra_por_rango_de_chunk_index(monkeypatch):
+    monkeypatch.setattr(settings, "RETRIEVAL_MAX_VENTANAS", 10)
+    monkeypatch.setattr(settings, "RETRIEVAL_FRAGMENTOS_POR_VENTANA", 2)
+    # 40 chunks y 10 ventanas: la ventana i cubre los índices [4i, 4i+4)
+    adapter, llamadas = _adapter(
+        lambda c, k: [_frag(f"c{j}", j) for j in range(40)], total_chunks=40
+    )
+    ctx = adapter.obtener_contexto(_payload(_documento_largo()))
+    assert len(llamadas) == 10
+    esperado = [f"c{4 * i + d}" for i in range(10) for d in (0, 1)]
+    assert ctx.texto.split("|") == esperado
+
+
+def test_sin_candidatos_en_rango_usa_el_comportamiento_previo(monkeypatch):
+    monkeypatch.setattr(settings, "RETRIEVAL_MAX_VENTANAS", 10)
+    adapter, _ = _adapter(lambda c, k: [_frag("x", 999)], total_chunks=40)
+    ctx = adapter.obtener_contexto(_payload(_documento_largo()))
+    assert ctx.texto == "x"

@@ -94,6 +94,11 @@ def construir_consultas(titulo: str, contenido: str) -> list[str]:
     return [construir_consulta(titulo, v) for v in dividir_en_ventanas(contenido, cantidad)]
 
 
+def _chunk_index(fragmento) -> int | None:
+    valor = (getattr(fragmento, "metadatos", None) or {}).get("chunk_index")
+    return valor if isinstance(valor, int) else None
+
+
 class ContextoRealAdapter:
     """NM-05 (indexar) + NM-06 (recuperar). Todo inyectable para tests."""
 
@@ -127,22 +132,42 @@ class ContextoRealAdapter:
         return self._vector_store
 
     def _recuperar_por_ventanas(self, consultas: list[str], doc_id: str) -> list:
-        """Recupera por sección y une sin duplicados, en orden de documento (NM-22).
+        """Recupera por sección y une sin duplicados, en orden de documento (NM-22, NM-33).
 
-        El top_k global se reparte entre las secciones (mínimo 1 por sección), de modo
-        que el total de fragmentos queda en max(RETRIEVAL_TOP_K, secciones) y entra en
-        RETRIEVAL_MAX_CONTEXT_TOKENS sin que ensamblar_contexto corte los últimos.
+        Cada ventana pide RETRIEVAL_VENTANA_CANDIDATOS fragmentos y conserva los mejores
+        RETRIEVAL_FRAGMENTOS_POR_VENTANA cuyo chunk_index cae en el rango de esa ventana
+        (proporcional al total de chunks del documento). Así una ventana no puede traer
+        fragmentos de otra zona. Si ninguno cae en el rango, o los fragmentos no traen
+        chunk_index, usa el comportamiento previo: los primeros max(1, TOP_K // ventanas).
+        En PDFs de varias páginas el rango es aproximado (ventanas por caracteres,
+        chunks por página).
         """
-        por_ventana = max(1, settings.RETRIEVAL_TOP_K // len(consultas))
+        ventanas = len(consultas)
+        previo = max(1, settings.RETRIEVAL_TOP_K // ventanas)
+        candidatos_k = max(settings.RETRIEVAL_VENTANA_CANDIDATOS, previo)
+        por_ventana = max(1, settings.RETRIEVAL_FRAGMENTOS_POR_VENTANA)
+        total_chunks = self._store.count_document(doc_id)
+
         vistos: set[str] = set()
         unidos = []
-        for consulta in consultas:
-            for fragmento in self._recuperar(
+        for i, consulta in enumerate(consultas):
+            candidatos = self._recuperar(
                 consulta=consulta,
                 vector_store=self._vector_store,
                 documento_id=doc_id,
-                top_k=por_ventana,
-            ):
+                top_k=candidatos_k,
+            )
+            lo = i * total_chunks // ventanas
+            hi = (i + 1) * total_chunks // ventanas
+            en_rango = [
+                f for f in candidatos
+                if _chunk_index(f) is not None and lo <= _chunk_index(f) < hi
+            ]
+            if en_rango:
+                elegidos = sorted(en_rango[:por_ventana], key=_chunk_index)
+            else:
+                elegidos = candidatos[:previo]
+            for fragmento in elegidos:
                 if fragmento.chunk_id in vistos:
                     continue
                 vistos.add(fragmento.chunk_id)

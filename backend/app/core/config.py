@@ -59,11 +59,15 @@ class Settings(BaseSettings):
     # Recuperación semántica (NM-06)
     RETRIEVAL_TOP_K: int = 5
     RETRIEVAL_SCORE_THRESHOLD: float = 0.35
-    RETRIEVAL_MAX_CONTEXT_TOKENS: int = 2000
+    RETRIEVAL_MAX_CONTEXT_TOKENS: int = 6000
 
-    # Cobertura del documento completo en la recuperación (NM-22)
-    RETRIEVAL_MAX_VENTANAS: int = 5
+    # Cobertura del documento completo en la recuperación (NM-22, NM-33)
+    RETRIEVAL_MAX_VENTANAS: int = 10
     RETRIEVAL_VENTANA_CHARS: int = 2000
+    # NM-33: candidatos que se piden por ventana y fragmentos que se conservan de
+    # los que caen dentro del rango de chunks de esa ventana.
+    RETRIEVAL_VENTANA_CANDIDATOS: int = 8
+    RETRIEVAL_FRAGMENTOS_POR_VENTANA: int = 2
 
     # Verificación de fidelidad (NM-09)
     FIDELITY_SCORE_THRESHOLD: float = 0.7

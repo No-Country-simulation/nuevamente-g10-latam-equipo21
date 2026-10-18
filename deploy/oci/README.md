@@ -169,9 +169,11 @@ al proveedor puede exceder ese límite y hacer fallar la generación.
 
 NM-25 exige `GEMINI_API_KEY` y `OCI_NAMESPACE` no vacíos cuando se usa el pipeline
 real. Compose fija `USE_MOCK_LLM=false` y `OCI_AUTH_MODE=instance_principal`;
-no se requieren claves OCI de usuario. NM-22 utiliza por defecto
-`RETRIEVAL_MAX_VENTANAS=5` y `RETRIEVAL_VENTANA_CHARS=2000`. Se pueden declarar
-en `runtime.env` si se desea cambiarlos, sin copiar todo el `.env.example` local.
+no se requieren claves OCI de usuario. NM-22 y NM-33 utilizan por defecto
+`RETRIEVAL_MAX_VENTANAS=10`, `RETRIEVAL_VENTANA_CHARS=2000`,
+`RETRIEVAL_VENTANA_CANDIDATOS=8`, `RETRIEVAL_FRAGMENTOS_POR_VENTANA=2` y
+`RETRIEVAL_MAX_CONTEXT_TOKENS=6000`. Se pueden declarar en `runtime.env` si se
+desea cambiarlos, sin copiar todo el `.env.example` local.
 
 ## Construcción de imágenes
 
