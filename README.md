@@ -4,6 +4,13 @@ Sistema inteligente de adaptación y generación de contenido educativo desarrol
 
 NuevaMente transforma documentación técnica en materiales didácticos adaptados al perfil de quien aprende, el formato deseado, el sector de aplicación y el nivel de detalle. El proyecto combina recuperación semántica (RAG), Google Gemini, evaluación de fidelidad y persistencia en OCI Object Storage.
 
+## Demo
+
+[Probar NuevaMente](https://nuevamente.sachadev.me)
+
+El acceso requiere usuario y contraseña. Solicitá las credenciales al equipo por privado.
+Consultá la [guía de acceso](deploy/oci/DEMO_ACCESS.md) para más información.
+
 ## Problema que resuelve
 
 La documentación técnica suele asumir conocimientos previos y presentar el mismo contenido a públicos con necesidades distintas. NuevaMente permite convertir una fuente técnica en tutoriales, flashcards, cuestionarios, resúmenes ejecutivos o guiones de clase, manteniendo el contenido anclado al documento original.
@@ -83,7 +90,7 @@ La descripción completa y los contratos de datos se encuentran en [`docs/ARCHIT
 | Pipeline lineal | Integrado en `POST /api/v1/adaptar-contenido`. |
 | Flujo multi-agente | Implementado y probado mediante script; exposición desde el endpoint en revisión en NM-28 ([#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83)), todavía no integrada. |
 | Frontend Streamlit | Implementado y conectado a los endpoints de extracción y adaptación de FastAPI. |
-| Despliegue OCI Compute | Integrado mediante NM-D2 ([#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60)): Streamlit público, FastAPI sin publicación directa y persistencia real en Object Storage. Validación funcional con un documento corto de 1112 bytes y un escenario Principiante/Tutorial. |
+| Despliegue OCI Compute | Streamlit con acceso HTTPS y autenticación, FastAPI sin publicación directa y persistencia real en Object Storage. Validación funcional con un documento corto de 1112 bytes y un escenario Principiante/Tutorial. |
 | Vínculo entre original y paquete | Pendiente de completar en NM-27: los objetos se persisten, pero el paquete todavía no referencia al original. |
 | Contrato uniforme de errores | Pendiente en NM-21 para los casos que aún responden fuera del sobre común. |
 
@@ -285,6 +292,10 @@ Las fallas de autenticación o autorización contra OCI se consideran errores de
 ## Despliegue en OCI Compute
 
 El despliegue validado ejecuta FastAPI y Streamlit como contenedores separados.
+La demo cuenta con HTTPS y autenticación mediante usuario y contraseña. El acceso
+de evaluadores, las pruebas externas y la limpieza administrativa del bucket se
+describen en [la guía de acceso protegido](deploy/oci/DEMO_ACCESS.md).
+
 Traefik publica únicamente la interfaz. FastAPI no publica puertos en el host
 ni tiene una ruta habilitada en Traefik; el frontend lo consume mediante la red
 `backend_internal`. El backend también está conectado a `proxy` para tener
