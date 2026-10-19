@@ -42,7 +42,7 @@ def test_compose_usa_instance_principal_y_red_interna(compose):
     assert backend["environment"]["OCI_AUTH_MODE"] == "instance_principal"
     assert compose["networks"]["backend_internal"]["internal"] is True
     assert compose["networks"]["backend_internal"]["name"] == "nuevamente-internal"
-    for service in compose["services"].values():
+    for service in (compose["services"]["backend"], compose["services"]["frontend"]):
         assert "backend_internal" in service["networks"]
     assert "proxy" in backend["networks"]  # Egreso requerido por Gemini/OCI.
     assert backend["labels"]["traefik.enable"] == "false"
@@ -105,15 +105,20 @@ def test_https_protege_todas_las_rutas_de_streamlit(compose):
     assert all("PathPrefix" not in value for key, value in labels.items() if key.endswith(".rule"))
 
 
-def test_credenciales_solo_en_archivo_privado_del_proxy(compose):
+def test_credenciales_solo_en_archivo_privado_del_servicio_de_acceso(compose):
     frontend = compose["services"]["frontend"]
     labels = frontend["labels"]
-    auth = "traefik.http.middlewares.nuevamente-demo-auth.basicauth"
-    assert labels[f"{auth}.usersfile"] == "/run/secrets/nuevamente-demo/users.htpasswd"
-    assert labels[f"{auth}.removeheader"] == "true"
-    assert f"{auth}.users" not in labels
+    auth = "traefik.http.middlewares.nuevamente-demo-auth.forwardauth"
+    assert labels[f"{auth}.address"] == "http://demo_auth:8080/verificar"
+    assert labels[f"{auth}.trustforwardheader"] == "false"
     assert not frontend.get("volumes")
     assert not any("PASSWORD" in key or "HTPASSWD" in key for key in frontend["environment"])
+    access = compose["services"]["demo_auth"]
+    assert access["networks"] == ["proxy"]
+    assert access["environment"]["DEMO_AUTH_PUBLIC_HOST"].startswith("${NUEVAMENTE_PUBLIC_HOST:?")
+    assert access["labels"]["traefik.http.routers.nuevamente-access.priority"] == "100"
+    assert "Path(`/acceso`)" in access["labels"]["traefik.http.routers.nuevamente-access.rule"]
+    assert all("/run/secrets/nuevamente-auth" in mount for mount in access["volumes"])
 
 
 def test_alias_www_solo_redirige_al_host_canonico_y_tiene_tls(compose):
@@ -144,6 +149,6 @@ def test_redireccion_www_conserva_ruta_y_query(compose, scheme, path):
 
 def test_nm39_no_configura_redireccion_global_ni_dashboard(compose):
     # La configuración de la aplicación no administra el Traefik compartido.
-    assert set(compose["services"]) == {"backend", "frontend"}
+    assert set(compose["services"]) == {"backend", "frontend", "demo_auth"}
     labels = compose["services"]["frontend"]["labels"]
     assert not any("entrypoints." in key or "api@internal" in str(value) for key, value in labels.items())

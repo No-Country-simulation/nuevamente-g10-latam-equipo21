@@ -190,10 +190,16 @@ sudo docker build \
 sudo docker build \
   --tag nuevamente-frontend:<version> \
   frontend
+
+sudo docker build \
+  --tag nuevamente-auth:<version> \
+  deploy/oci/demo_auth
 ```
 
-Las dos imágenes se ejecutan con usuarios numéricos sin privilegios, filesystem
+Las imágenes se ejecutan con usuarios numéricos sin privilegios, filesystem
 de solo lectura, capacidades eliminadas, límites de recursos y health checks.
+La preparación de los archivos privados del acceso se describe en
+[Acceso a la demo](DEMO_ACCESS.md).
 
 ## Inicio de los servicios
 
@@ -203,12 +209,14 @@ cd deploy/oci
 sudo env \
   NUEVAMENTE_BACKEND_IMAGE=nuevamente-backend:<version-backend> \
   NUEVAMENTE_FRONTEND_IMAGE=nuevamente-frontend:<version-frontend> \
+  NUEVAMENTE_AUTH_IMAGE=nuevamente-auth:<version-auth> \
   NUEVAMENTE_PUBLIC_HOST=nuevamente.sachadev.me \
   NUEVAMENTE_BACKEND_ENV_FILE=/etc/docker-platform/apps/nuevamente/runtime.env \
   docker compose -f compose.backend.yml up -d
 ```
 
-Compose espera a que FastAPI esté saludable antes de iniciar Streamlit.
+Compose espera a que FastAPI y el servicio de acceso estén saludables antes de
+iniciar Streamlit.
 
 ## Validaciones
 
@@ -244,13 +252,14 @@ sudo docker exec nuevamente-frontend-1 python -c \
   'http://backend:8000/api/v1/health', timeout=5).read().decode())"
 ```
 
-Health check de Streamlit mediante HTTPS y autenticación (pide la contraseña):
+Sin sesión, la portada debe redirigir a `/acceso`. Después de iniciar sesión en
+el navegador, comprobar que Streamlit carga y permite generar contenido:
 
 ```bash
-curl --fail --user evaluador https://nuevamente.sachadev.me/_stcore/health
+curl -I https://nuevamente.sachadev.me/
 ```
 
-La respuesta esperada es `ok`. Con credenciales válidas, la portada debe responder 200 en:
+Con sesión válida, la portada debe responder 200 en:
 
 ```text
 https://nuevamente.sachadev.me/
@@ -268,11 +277,11 @@ Desde una computadora externa a la VM, comprobar primero que la interfaz
 responde y que el acceso directo a FastAPI falla:
 
 ```bash
-curl --fail --max-time 10 --user evaluador https://nuevamente.sachadev.me/_stcore/health
+curl -I --max-time 10 https://nuevamente.sachadev.me/
 curl --connect-timeout 5 --max-time 10 http://IP_PUBLICA:8000/api/v1/health
 ```
 
-El primero debe devolver `ok`; el segundo debe fallar por conexión rechazada o
+El primero debe redirigir a `/acceso`; el segundo debe fallar por conexión rechazada o
 timeout. Un timeout aislado no demuestra aislamiento si la interfaz tampoco
 responde. Las rutas `/docs` y `/api/v1/health` del host público no deben entregar
 Swagger ni el JSON de FastAPI (Streamlit puede devolver su propio HTML).
@@ -431,6 +440,7 @@ cd deploy/oci
 sudo env \
   NUEVAMENTE_BACKEND_IMAGE=nuevamente-backend:<version-backend-actual> \
   NUEVAMENTE_FRONTEND_IMAGE=nuevamente-frontend:<nueva-version> \
+  NUEVAMENTE_AUTH_IMAGE=nuevamente-auth:<version-auth-actual> \
   NUEVAMENTE_PUBLIC_HOST=nuevamente.sachadev.me \
   NUEVAMENTE_BACKEND_ENV_FILE=/etc/docker-platform/apps/nuevamente/runtime.env \
   docker compose -f compose.backend.yml up -d

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Acceso a la demo · NuevaMente</title>
+  <style>
+    :root{font-family:Arial,Helvetica,sans-serif;color:#202923;background:#f4f7f3}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;min-width:0;display:grid;grid-template-rows:auto 1fr auto}
+    header,footer{width:min(1120px,calc(100% - 40px));margin:auto}
+    header{padding:30px 0;display:flex;align-items:center;gap:12px;font-size:14px;font-weight:800;letter-spacing:.08em}
+    .mark{width:34px;height:34px;border-radius:9px;background:#b8df58;display:grid;place-items:center;letter-spacing:0;font-size:18px}
+    main{width:min(1120px,calc(100% - 40px));min-width:0;margin:auto;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:60px;align-items:center;padding:24px 0 88px}
+    main>section{min-width:0}
+    .eyebrow{font-size:12px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:#087e75}
+    h1{font-size:clamp(36px,5vw,68px);letter-spacing:-.045em;line-height:1.05;margin:18px 0 22px}
+    .lede{font-size:19px;line-height:1.55;color:#4d5d52;max-width:550px;margin:0}
+    .feature{display:flex;gap:12px;align-items:flex-start;margin-top:36px;color:#3b4c40;font-size:14px;line-height:1.5}
+    .feature-icon{flex:none;width:27px;height:27px;border-radius:7px;background:#e0efcc;display:grid;place-items:center;color:#075d57;font-weight:bold}
+    .card{background:#fff;border:1px solid #dce4dd;border-radius:20px;box-shadow:0 18px 55px rgba(26,47,31,.07);padding:clamp(26px,4vw,48px)}
+    .card h2{font-size:28px;letter-spacing:-.03em;margin:8px 0 8px}
+    .hint{color:#66736b;font-size:15px;line-height:1.55;margin:0 0 28px}
+    label{display:block;font-size:14px;font-weight:700;margin:20px 0 8px}
+    input{width:100%;height:48px;border:1px solid #aab9ad;border-radius:9px;padding:0 14px;color:#202923;background:#fff;font:inherit;font-size:16px}
+    input:focus-visible,button:focus-visible{outline:3px solid #087e75;outline-offset:2px}
+    input:hover{border-color:#087e75}
+    button{width:100%;min-height:48px;border:0;border-radius:9px;background:#087e75;color:#fff;font:inherit;font-size:16px;font-weight:700;cursor:pointer;margin-top:28px;transition:background .18s ease}
+    button:hover{background:#05665e}
+    .error{background:#fff0ec;border:1px solid #e8735b;color:#8d2d1b;border-radius:8px;padding:11px 13px;font-size:14px;line-height:1.45;margin:0 0 16px}
+    .note{border-top:1px solid #e5ebe5;margin:26px 0 0;padding-top:20px;color:#66736b;font-size:13px;line-height:1.5}
+    footer{padding:20px 0 28px;border-top:1px solid #dce4dd;color:#66736b;font-size:13px}
+    @media(max-width:760px){header{padding:22px 0}main{grid-template-columns:minmax(0,1fr);gap:34px;padding:10px 0 55px}.feature{margin-top:20px}.card{padding:28px}h1{margin:12px 0}}
+    @media(prefers-reduced-motion:reduce){button{transition:none}}
+  </style>
+</head>
+<body>
+  <header><span class="mark" aria-hidden="true">N</span> NUEVAMENTE</header>
+  <main>
+    <section aria-labelledby="welcome-title">
+      <div class="eyebrow">Demo Privada</div>
+      <h1 id="welcome-title">Aprender empieza con una buena fuente.</h1>
+      <p class="lede">Subí un documento y adaptá su contenido según el perfil, el nivel y el formato que necesites.</p>
+      <div class="feature"><span class="feature-icon" aria-hidden="true">✓</span><span>Acceso restringido para el equipo y evaluadores.</span></div>
+    </section>
+    <section class="card" aria-labelledby="login-title">
+      <div class="eyebrow">ACCESO</div>
+      <h2 id="login-title">Bienvenido</h2>
+      <p class="hint">Ingresá tus datos para continuar.</p>
+      <!-- LOGIN_ERROR -->
+      <form action="/acceso" method="post">
+        <label for="username">Usuario</label>
+        <input id="username" name="username" autocomplete="username" required maxlength="128">
+        <label for="password">Contraseña</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button type="submit">Ingresar</button>
+      </form>
+      <p class="note">Credenciales provistas por el equipo.</p>
+    </section>
+  </main>
+  <footer>NuevaMente · G10 · Latam · Equipo 21</footer>
+</body>
+</html>
