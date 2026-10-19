@@ -117,3 +117,19 @@ def test_mock_no_reporta_una_subida_exitosa_a_oci():
     # El identificador señala el origen simulado y se distingue del flujo real.
     assert almacenamiento["objeto_id"] == "mock-no-persistido"
     assert almacenamiento["objeto_id"] != OBJETO_NO_PERSISTIDO
+
+
+def test_mock_tutorial_incluye_prerrequisitos():
+    payload = {**PAYLOAD_BASE, "formato_salida": "Tutorial"}
+    data = client.post(ENDPOINT, json=payload).json()
+
+    prerrequisitos = data["metadatos"]["prerrequisitos"]
+    assert len(prerrequisitos) >= 1
+    assert all(isinstance(p, str) and p for p in prerrequisitos)
+
+
+def test_mock_flashcards_devuelve_prerrequisitos_vacios():
+    payload = {**PAYLOAD_BASE, "formato_salida": "Flashcards"}
+    data = client.post(ENDPOINT, json=payload).json()
+
+    assert data["metadatos"]["prerrequisitos"] == []

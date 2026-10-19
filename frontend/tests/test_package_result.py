@@ -175,3 +175,25 @@ def test_failed_upload_keeps_generated_content_and_shows_warning():
         for message in app.warning
     )
     assert len(app.success) == 0
+
+
+def test_prerequisites_are_listed_next_to_key_concepts():
+    _, item, _ = FORMAT_CASES[0]
+    result = make_result("Flashcards", item)
+    result["metadatos"]["prerrequisitos"] = ["Direccionamiento IP", "Conceptos de redes"]
+    app = render_result(result)
+
+    assert not app.exception
+    text = visible_text(app)
+    assert "Prerrequisitos" in text
+    assert "Direccionamiento IP" in text
+    assert "Conceptos de redes" in text
+    assert "Red virtual" in text  # los conceptos clave siguen visibles
+
+
+def test_empty_prerequisites_hide_the_section():
+    _, item, _ = FORMAT_CASES[0]
+    app = render_result(make_result("Flashcards", item))  # prerrequisitos: []
+
+    assert not app.exception
+    assert "Prerrequisitos" not in visible_text(app)
