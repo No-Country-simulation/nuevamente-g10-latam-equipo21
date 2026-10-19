@@ -11,6 +11,7 @@ def init_session_state() -> None:
         "document_title": None,
         "is_loading": False,
         "source_filename": None,
+        "api_status": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:

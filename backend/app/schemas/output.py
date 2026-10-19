@@ -135,3 +135,11 @@ class ErrorSchema(PublicSchema):
         min_length=1,
         description="Descripción del error",
     )
+
+
+class ErrorResponseSchema(PublicSchema):
+    """Sobre público de error: {"status": "error", "error": {codigo, mensaje}} (NM-21)."""
+
+    status: Literal["error"] = "error"
+
+    error: ErrorSchema

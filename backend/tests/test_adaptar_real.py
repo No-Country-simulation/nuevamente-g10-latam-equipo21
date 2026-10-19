@@ -313,3 +313,20 @@ def test_politica_y_observaciones_llegan_a_la_respuesta_y_a_oci(monkeypatch, sco
     assert quality["umbral_fidelidad"] == 0.7
     assert quality["afirmaciones_no_respaldadas"] == claims
     assert stored[0]["evaluacion_calidad"] == quality
+# --- NM-21: contenido insuficiente -> 422 (no 502) ---
+def test_contenido_insuficiente_para_metadatos_devuelve_422():
+    from app.services.adaptacion_adapters import MetadatosRealAdapter
+    from app.services.metadata_service import MetadatosInsuficientesError
+
+    def generar_insuficiente(**kwargs):
+        raise MetadatosInsuficientesError("sin conceptos verificables")
+
+    metadatos = MetadatosRealAdapter(llm_provider="LLM", generar=generar_insuficiente)
+    c, _ = make_client(metadatos=metadatos)
+
+    r = c.post(URL, json=PAYLOAD)
+
+    assert r.status_code == 422
+    body = r.json()
+    assert body["status"] == "error"
+    assert body["error"]["codigo"] == "CONTENIDO_INSUFICIENTE"

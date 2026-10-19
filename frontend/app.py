@@ -9,7 +9,12 @@ from components.error_display import render_error
 from components.loading_indicator import loading_indicator
 from components.package_result import render_package_result
 from components.sidebar import render_adaptation_options
-from services.api_client import APIClientError, adapt_document, extract_document
+from services.api_client import (
+    APIClientError,
+    APIConnectionError,
+    adapt_document,
+    extract_document,
+)
 from components.download_json import render_json_download
 from utils.session_state import init_session_state
 from utils.quality import requires_review
@@ -55,6 +60,22 @@ def load_styles() -> None:
             f"<style>{stylesheet.read_text(encoding='utf-8')}</style>",
             unsafe_allow_html=True,
         )
+
+
+_ESTADO_API = {
+    None: "Servicio de adaptación",
+    True: "API conectada",
+    False: "Sin conexión con la API",
+}
+
+
+def render_status_footnote() -> None:
+    """Pie de estado de la API. Nunca expone la URL interna (NM-38)."""
+    label = _ESTADO_API.get(st.session_state.get("api_status"))
+    st.markdown(
+        f'<div class="api-footnote"><span class="status-dot"></span> {label}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def run_adaptation(
@@ -167,6 +188,7 @@ if submitted:
                     document_title,
                     options,
                 )
+            st.session_state["api_status"] = True
 
             if result.get("status") != "exito":
                 error = result.get("error")
@@ -182,7 +204,12 @@ if submitted:
                 if requires_review(result.get("evaluacion_calidad", {})) is False:
                     st.success("El contenido educativo se generó correctamente.")
 
+        except APIConnectionError as error:
+            st.session_state["api_status"] = False
+            render_error(error.error)
         except APIClientError as error:
+            # La API respondió con un error (p. ej. validación): la conexión funciona.
+            st.session_state["api_status"] = True
             render_error(error.error)
         finally:
             st.session_state["is_loading"] = False
@@ -202,7 +229,4 @@ if result and result.get("status") == "exito":
 else:
     st.caption("El contenido generado aparecerá aquí después de la adaptación.")
 
-st.markdown(
-    f'<div class="api-footnote"><span class="status-dot"></span> API · {API_BASE_URL}</div>',
-    unsafe_allow_html=True,
-)
+render_status_footnote()

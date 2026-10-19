@@ -1,8 +1,12 @@
 # Despliegue de NuevaMente en OCI
 
-Esta guía documenta el despliegue actual de NuevaMente sobre una instancia OCI
+Esta guía documenta el despliegue de NuevaMente sobre una instancia OCI
 Compute de desarrollo. El backend FastAPI y el frontend Streamlit se ejecutan
 como contenedores independientes administrados con Docker Compose.
+
+El despliegue requiere HTTPS y autenticación. Antes de iniciar o
+actualizar servicios, completar [el procedimiento de acceso protegido](DEMO_ACCESS.md).
+La guía incluye las comprobaciones de acceso realizadas sobre el entorno desplegado.
 
 ## Arquitectura desplegada
 
@@ -10,7 +14,7 @@ como contenedores independientes administrados con Docker Compose.
 Internet
    |
    v
-Traefik :80
+Traefik :80 (redirección) / :443 (HTTPS + autenticación)
    |
    v
 Streamlit :8501
@@ -33,8 +37,8 @@ FastAPI :8000
 - FastAPI se autentica contra OCI mediante Instance Principal.
 - La clave de Gemini se almacena en OCI Vault y se materializa únicamente en
   un archivo `runtime.env` protegido dentro de la VM.
-- El entorno actual es de desarrollo y utiliza HTTP. HTTPS queda pendiente de
-  disponer de un dominio del equipo.
+- El entorno es de desarrollo/demo y cuenta con dominio propio, HTTPS y
+  autenticación mediante usuario y contraseña.
 
 ## Recursos previos
 
@@ -42,7 +46,8 @@ La plataforma OCI debe proporcionar:
 
 - una instancia Compute con Docker y Docker Compose;
 - una red Docker externa llamada `proxy`;
-- Traefik conectado a esa red;
+- Traefik conectado a esa red, con `websecure`, resolver `letsencrypt` y el
+  archivo privado de usuarios descrito en [la guía de acceso protegido](DEMO_ACCESS.md);
 - el Dynamic Group y las políticas IAM de la instancia;
 - acceso de Instance Principal al secreto de Gemini y al bucket privado
   `nuevamente-contenidos-educativos`;
@@ -62,11 +67,11 @@ de esa IaC, los requisitos mínimos son:
    **1 OCPU y 6 GB de RAM**, con un boot volume de **50 GB** confirmado mediante
    la API de OCI. Construir las imágenes en la VM conserva la arquitectura ARM64.
 2. Subnet con salida a Internet para Gemini, OCI y las descargas de imágenes.
-   Las reglas de entrada de NuevaMente son TCP **80** público y TCP **22** solo
+   Las reglas de entrada de NuevaMente son TCP **80/443** públicos y TCP **22** solo
    desde la IP administrativa `/32`; **8000 y 8501 no se abren**. Aplicar la misma
    restricción en NSG, security lists y firewall del sistema operativo.
 3. Crear la red `proxy` con `sudo docker network create proxy` si no existe.
-   Traefik debe conectarse a ella, publicar `80:80`, tener el entrypoint `web`,
+   Traefik debe conectarse a ella, publicar `80:80` y `443:443`, tener los entrypoints `web` y `websecure`,
    el proveedor Docker y `providers.docker.exposedByDefault=false`. No publicar
    su dashboard. El Compose de la aplicación crea `nuevamente-internal`.
 4. Crear un Dynamic Group limitado a la instancia, con regla
@@ -79,7 +84,7 @@ de esa IaC, los requisitos mínimos son:
    contenidos, y preparar `runtime.env` mediante los pasos siguientes.
 
 La VM actualmente comparte Traefik con otra aplicación. NuevaMente usa una regla
-`Host` configurable: `NUEVAMENTE_PUBLIC_HOST` debe ser su IP pública o dominio,
+`Host` configurable: `NUEVAMENTE_PUBLIC_HOST` debe ser su dominio HTTPS,
 sin `http://`, ruta ni puerto. Esto evita que NuevaMente capture peticiones
 dirigidas a otros hosts. Una regla para el mismo host y ruta en otra aplicación
 requiere resolver esa asignación antes de desplegar.
@@ -107,8 +112,8 @@ y los reportes de costos pueden tener demora: la consulta no garantiza cargos
 futuros nulos ni cubre el consumo posterior al período indicado. La cuota de
 Gemini es independiente de Always Free de OCI.
 
-No habilitar componentes adicionales para esta entrega. TLS, dominio propio y
-CI/CD automatizado quedan fuera del alcance de NM-D2.
+El despliegue utiliza dominio propio y TLS. La publicación de nuevas versiones
+es manual; no cuenta con CI/CD automatizado.
 
 ## Secretos en la VM
 
@@ -156,7 +161,7 @@ no ejecutarlo sobre un `runtime.env` existente sin preservar su configuración.
 El modelo `gemini-3.1-flash-lite` y el timeout de 60 segundos son overrides del
 entorno desplegado, confirmados por consulta el 12 de octubre de 2026. No son los
 valores predeterminados del código. No se ha confirmado que la elección responda
-a una limitación de cuota. Para cerrar NM-D2 se mantiene el modelo porque la
+a una limitación de cuota. Se mantiene el modelo porque la
 generación y persistencia del release fueron validadas con él. Según el
 [calendario oficial de Gemini](https://ai.google.dev/gemini-api/docs/deprecations/)
 consultado el 12 de octubre de 2026, continúa disponible y su fecha más temprana
@@ -167,7 +172,7 @@ Se mantiene el timeout de 60 segundos utilizado en la validación del despliegue
 Su suficiencia para documentos largos queda pendiente de pruebas: una llamada
 al proveedor puede exceder ese límite y hacer fallar la generación.
 
-NM-25 exige `GEMINI_API_KEY` y `OCI_NAMESPACE` no vacíos cuando se usa el pipeline
+El backend exige `GEMINI_API_KEY` y `OCI_NAMESPACE` no vacíos cuando se usa el pipeline
 real. Compose fija `USE_MOCK_LLM=false` y `OCI_AUTH_MODE=instance_principal`;
 no se requieren claves OCI de usuario. NM-22 utiliza por defecto
 `RETRIEVAL_MAX_VENTANAS=5` y `RETRIEVAL_VENTANA_CHARS=2000`. Se pueden declarar
@@ -185,10 +190,16 @@ sudo docker build \
 sudo docker build \
   --tag nuevamente-frontend:<version> \
   frontend
+
+sudo docker build \
+  --tag nuevamente-auth:<version> \
+  deploy/oci/demo_auth
 ```
 
-Las dos imágenes se ejecutan con usuarios numéricos sin privilegios, filesystem
+Las imágenes se ejecutan con usuarios numéricos sin privilegios, filesystem
 de solo lectura, capacidades eliminadas, límites de recursos y health checks.
+La preparación de los archivos privados del acceso se describe en
+[Acceso a la demo](DEMO_ACCESS.md).
 
 ## Inicio de los servicios
 
@@ -198,12 +209,14 @@ cd deploy/oci
 sudo env \
   NUEVAMENTE_BACKEND_IMAGE=nuevamente-backend:<version-backend> \
   NUEVAMENTE_FRONTEND_IMAGE=nuevamente-frontend:<version-frontend> \
-  NUEVAMENTE_PUBLIC_HOST=IP_PUBLICA_O_DOMINIO \
+  NUEVAMENTE_AUTH_IMAGE=nuevamente-auth:<version-auth> \
+  NUEVAMENTE_PUBLIC_HOST=nuevamente.sachadev.me \
   NUEVAMENTE_BACKEND_ENV_FILE=/etc/docker-platform/apps/nuevamente/runtime.env \
-  docker compose -f compose.backend.yml up -d --remove-orphans
+  docker compose -f compose.backend.yml up -d
 ```
 
-Compose espera a que FastAPI esté saludable antes de iniciar Streamlit.
+Compose espera a que FastAPI y el servicio de acceso estén saludables antes de
+iniciar Streamlit.
 
 ## Validaciones
 
@@ -239,16 +252,17 @@ sudo docker exec nuevamente-frontend-1 python -c \
   'http://backend:8000/api/v1/health', timeout=5).read().decode())"
 ```
 
-Health check público de Streamlit:
+Sin sesión, la portada debe redirigir a `/acceso`. Después de iniciar sesión en
+el navegador, comprobar que Streamlit carga y permite generar contenido:
 
 ```bash
-curl --fail http://IP_PUBLICA/_stcore/health
+curl -I https://nuevamente.sachadev.me/
 ```
 
-La respuesta esperada es `ok`. La portada debe responder HTTP 200 en:
+Con sesión válida, la portada debe responder 200 en:
 
 ```text
-http://IP_PUBLICA/
+https://nuevamente.sachadev.me/
 ```
 
 FastAPI debe seguir sin puertos publicados:
@@ -263,11 +277,11 @@ Desde una computadora externa a la VM, comprobar primero que la interfaz
 responde y que el acceso directo a FastAPI falla:
 
 ```bash
-curl --fail --max-time 10 http://IP_PUBLICA/_stcore/health
+curl -I --max-time 10 https://nuevamente.sachadev.me/
 curl --connect-timeout 5 --max-time 10 http://IP_PUBLICA:8000/api/v1/health
 ```
 
-El primero debe devolver `ok`; el segundo debe fallar por conexión rechazada o
+El primero debe redirigir a `/acceso`; el segundo debe fallar por conexión rechazada o
 timeout. Un timeout aislado no demuestra aislamiento si la interfaz tampoco
 responde. Las rutas `/docs` y `/api/v1/health` del host público no deben entregar
 Swagger ni el JSON de FastAPI (Streamlit puede devolver su propio HTML).
@@ -426,7 +440,8 @@ cd deploy/oci
 sudo env \
   NUEVAMENTE_BACKEND_IMAGE=nuevamente-backend:<version-backend-actual> \
   NUEVAMENTE_FRONTEND_IMAGE=nuevamente-frontend:<nueva-version> \
-  NUEVAMENTE_PUBLIC_HOST=IP_PUBLICA_O_DOMINIO \
+  NUEVAMENTE_AUTH_IMAGE=nuevamente-auth:<version-auth-actual> \
+  NUEVAMENTE_PUBLIC_HOST=nuevamente.sachadev.me \
   NUEVAMENTE_BACKEND_ENV_FILE=/etc/docker-platform/apps/nuevamente/runtime.env \
   docker compose -f compose.backend.yml up -d
 ```
@@ -441,16 +456,17 @@ operador, primero se debe ejecutar un `terraform plan` en el repositorio IaC y
 comprobar que el resultado sea únicamente una actualización en sitio de la regla
 SSH, con `0 to destroy`, antes de aplicar el cambio.
 
-El único puerto público de NuevaMente es HTTP 80 a través de Traefik. La VM
+NuevaMente usa HTTP 80 para redirigir y HTTPS 443 para el acceso protegido. La VM
 compartida puede tener reglas adicionales para otras aplicaciones; no se deben
-cerrar ni modificar como parte de NM-D2. Revisar las reglas efectivas del NSG,
-security lists y firewall antes de afirmar que la VM completa solo expone 80.
+cerrar ni modificar al desplegar NuevaMente. Revisar las reglas efectivas del NSG,
+security lists y firewall antes de describir la exposición de toda la VM.
 
 ## Limitaciones de la demo
 
-La URL de NuevaMente usa HTTP y no exige autenticación; cualquier visitante puede
-consumir cuota de Gemini y almacenar objetos. La protección del acceso y limpieza
-administrativa se siguen en NM-39. No cargar documentos privados o credenciales.
+La demo cuenta con HTTPS y autenticación mediante usuario y contraseña. Las
+comprobaciones y el acceso se registran en [la guía de acceso](DEMO_ACCESS.md).
+La autenticación restringe el acceso, pero no limita el consumo de los usuarios
+autorizados. No cargar documentos privados o credenciales en la demo.
 
 La VM comparte Traefik, CPU, memoria y disco con otra aplicación; la carga o el
 mantenimiento de la plataforma pueden afectar a ambas. Las cuotas Always Free
