@@ -16,6 +16,10 @@ class APIClientError(Exception):
 		self.error = error or {"mensaje": message}
 
 
+class APIConnectionError(APIClientError):
+	"""No se pudo comunicar con la API (conexión caída o timeout)."""
+
+
 def _request(
 	api_base_url: str,
 	path: str,
@@ -29,7 +33,7 @@ def _request(
 		response = requests.request("POST", url, timeout=timeout, **kwargs)
 	except requests.ConnectionError as error:
 		message = f"No se pudo conectar con la API en {api_base_url}. Verifica que FastAPI esté iniciado."
-		raise APIClientError(
+		raise APIConnectionError(
 			message,
 			error={"codigo": "ERROR_CONEXION", "mensaje": message},
 		) from error
@@ -38,13 +42,13 @@ def _request(
 			f"La API tardó más de {timeout[1]} segundos durante {operation}. "
 			"Verifica los logs del backend para identificar la etapa demorada."
 		)
-		raise APIClientError(
+		raise APIConnectionError(
 			message,
 			error={"codigo": "TIMEOUT_API", "mensaje": message},
 		) from error
 	except requests.Timeout as error:
 		message = f"La solicitud de {operation} agotó el tiempo de espera. Intenta nuevamente."
-		raise APIClientError(
+		raise APIConnectionError(
 			message,
 			error={"codigo": "TIMEOUT_API", "mensaje": message},
 		) from error
