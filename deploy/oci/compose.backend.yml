@@ -85,36 +85,7 @@ services:
       traefik.enable: "true"
       traefik.docker.network: proxy
       traefik.http.routers.nuevamente.entrypoints: web
-      traefik.http.routers.nuevamente.rule: Host(`${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con el dominio HTTPS sin esquema ni puerto}`)
-      traefik.http.routers.nuevamente.middlewares: nuevamente-https
-      traefik.http.routers.nuevamente.service: noop@internal
-      traefik.http.middlewares.nuevamente-https.redirectscheme.scheme: https
-      traefik.http.middlewares.nuevamente-https.redirectscheme.port: "443"
-      traefik.http.middlewares.nuevamente-https.redirectscheme.permanent: "true"
-      traefik.http.routers.nuevamente-secure.entrypoints: websecure
-      traefik.http.routers.nuevamente-secure.rule: Host(`${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con el dominio HTTPS sin esquema ni puerto}`)
-      traefik.http.routers.nuevamente-secure.tls: "true"
-      traefik.http.routers.nuevamente-secure.tls.certresolver: letsencrypt
-      traefik.http.routers.nuevamente-secure.middlewares: nuevamente-demo-auth
-      traefik.http.routers.nuevamente-secure.service: nuevamente
-      # El alias solo redirige; no sirve Streamlit ni pide credenciales.
-      traefik.http.routers.nuevamente-www.entrypoints: web
-      traefik.http.routers.nuevamente-www.rule: Host(`www.${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con el dominio HTTPS sin esquema ni puerto}`)
-      traefik.http.routers.nuevamente-www.middlewares: nuevamente-canonical
-      traefik.http.routers.nuevamente-www.service: noop@internal
-      traefik.http.routers.nuevamente-www-secure.entrypoints: websecure
-      traefik.http.routers.nuevamente-www-secure.rule: Host(`www.${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con el dominio HTTPS sin esquema ni puerto}`)
-      traefik.http.routers.nuevamente-www-secure.tls: "true"
-      traefik.http.routers.nuevamente-www-secure.tls.certresolver: letsencrypt
-      traefik.http.routers.nuevamente-www-secure.middlewares: nuevamente-canonical
-      traefik.http.routers.nuevamente-www-secure.service: noop@internal
-      traefik.http.middlewares.nuevamente-canonical.redirectregex.regex: '^https?://[^/]+/(.*)'
-      traefik.http.middlewares.nuevamente-canonical.redirectregex.replacement: https://${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con el dominio HTTPS sin esquema ni puerto}/$${1}
-      traefik.http.middlewares.nuevamente-canonical.redirectregex.permanent: "true"
-      # El archivo existe dentro de Traefik, no dentro de Streamlit.
-      traefik.http.middlewares.nuevamente-demo-auth.basicauth.usersfile: /run/secrets/nuevamente-demo/users.htpasswd
-      traefik.http.middlewares.nuevamente-demo-auth.basicauth.removeheader: "true"
-      traefik.http.middlewares.nuevamente-demo-auth.basicauth.realm: NuevaMente demo
+      traefik.http.routers.nuevamente.rule: Host(`${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con la IP o dominio sin esquema ni puerto}`)
       traefik.http.services.nuevamente.loadbalancer.server.port: "8501"
 
 volumes:
