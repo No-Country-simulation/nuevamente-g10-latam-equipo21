@@ -6,6 +6,8 @@ import base64
 import hashlib
 import hmac
 import os
+import re
+import secrets
 import time
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -16,7 +18,9 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 
 
 COOKIE_NAME = "__Host-nm_session"
+CSRF_COOKIE_NAME = "__Host-nm_login_csrf"
 SESSION_SECONDS = 12 * 60 * 60
+CSRF_SECONDS = 30 * 60
 MAX_FORM_BYTES = 4096
 LOGIN_HTML = (Path(__file__).parent / "login.html").read_text(encoding="utf-8")
 PUBLIC_HEADERS = {
@@ -78,13 +82,17 @@ def create_app(*, users_file: Path, signing_key_file: Path, public_host: str) ->
         except (ValueError, UnicodeError, OSError):
             return False
 
-    def login_page(*, invalid: bool = False) -> HTMLResponse:
+    def login_page(csrf_token: str, *, invalid: bool = False) -> HTMLResponse:
         error = (
             '<p class="error" role="alert">Usuario o contraseña incorrectos. Revisalos e intentá de nuevo.</p>'
             if invalid else ""
         )
         return HTMLResponse(
-            LOGIN_HTML.replace("<!-- LOGIN_ERROR -->", error), headers=PUBLIC_HEADERS
+            LOGIN_HTML.replace("<!-- LOGIN_ERROR -->", error).replace(
+                "<!-- LOGIN_CSRF -->",
+                f'<input type="hidden" name="csrf_token" value="{csrf_token}">',
+            ),
+            headers=PUBLIC_HEADERS,
         )
 
     @service.get("/health", include_in_schema=False)
@@ -95,25 +103,36 @@ def create_app(*, users_file: Path, signing_key_file: Path, public_host: str) ->
     def access_page(request: Request) -> Response:
         if valid_session(request):
             return RedirectResponse("/", status_code=303, headers=PUBLIC_HEADERS)
-        return login_page()
+        csrf_token = request.cookies.get(CSRF_COOKIE_NAME, "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{43}", csrf_token):
+            csrf_token = secrets.token_urlsafe(32)
+        response = login_page(csrf_token)
+        response.set_cookie(
+            CSRF_COOKIE_NAME, csrf_token,
+            max_age=CSRF_SECONDS, secure=True, httponly=True, samesite="strict", path="/",
+        )
+        return response
 
     @service.post("/acceso", include_in_schema=False)
     async def sign_in(request: Request) -> Response:
-        origin = request.headers.get("origin")
-        if origin and origin != f"https://{public_host}":
-            return PlainTextResponse("Origen no permitido", status_code=403, headers=PUBLIC_HEADERS)
-
         body = bytearray()
         async for part in request.stream():
             body.extend(part)
             if len(body) > MAX_FORM_BYTES:
                 return PlainTextResponse("Solicitud demasiado grande", status_code=413, headers=PUBLIC_HEADERS)
         try:
-            fields = parse_qs(body.decode("utf-8"), keep_blank_values=True, max_num_fields=2)
+            fields = parse_qs(body.decode("utf-8"), keep_blank_values=True, max_num_fields=3)
             username = fields.get("username", [""])[0]
             password = fields.get("password", [""])[0]
         except (ValueError, UnicodeError):
-            return login_page(invalid=True)
+            return PlainTextResponse("Solicitud no válida", status_code=400, headers=PUBLIC_HEADERS)
+
+        csrf_token = request.cookies.get(CSRF_COOKIE_NAME, "")
+        submitted_token = fields.get("csrf_token", [""])[0]
+        if not re.fullmatch(r"[A-Za-z0-9_-]{43}", csrf_token) or not hmac.compare_digest(
+            csrf_token, submitted_token
+        ):
+            return PlainTextResponse("Solicitud no válida. Recargá la página.", status_code=403, headers=PUBLIC_HEADERS)
 
         digest = password_hash(username)
         try:
@@ -121,7 +140,7 @@ def create_app(*, users_file: Path, signing_key_file: Path, public_host: str) ->
         except ValueError:
             accepted = False
         if not accepted:
-            return login_page(invalid=True)
+            return login_page(csrf_token, invalid=True)
 
         issued = int(time.time())
         fingerprint = hashlib.sha256(digest).hexdigest()
@@ -131,6 +150,9 @@ def create_app(*, users_file: Path, signing_key_file: Path, public_host: str) ->
         response.set_cookie(
             COOKIE_NAME, f"{_encode(payload)}.{_encode(signature)}",
             max_age=SESSION_SECONDS, secure=True, httponly=True, samesite="lax", path="/",
+        )
+        response.delete_cookie(
+            CSRF_COOKIE_NAME, secure=True, httponly=True, samesite="strict", path="/",
         )
         return response
 
