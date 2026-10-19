@@ -1,7 +1,9 @@
 import logging
+from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
+from pypdf import PdfWriter
 
 from app.core.errors import OCIAuthenticationError
 from app.main import app
@@ -138,7 +140,7 @@ def test_extract_document_endpoint_returns_502_when_oci_authentication_fails():
     }
 
 
-def test_extract_document_endpoint_returns_readable_error_for_unsupported_format():
+def test_extract_document_endpoint_returns_contract_error_for_unsupported_format():
     response = client.post(
         "/api/v1/documents/extract",
         files={
@@ -151,4 +153,28 @@ def test_extract_document_endpoint_returns_readable_error_for_unsupported_format
     )
 
     assert response.status_code == 400
-    assert "Formatos permitidos" in response.json()["detail"]
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["error"]["codigo"] == "FORMATO_NO_SOPORTADO"
+    assert "Formatos permitidos" in body["error"]["mensaje"]
+
+
+def test_extract_document_endpoint_returns_contract_error_for_pdf_without_text():
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={"file": ("scanned.pdf", _pdf_sin_texto(), "application/pdf")},
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["error"]["codigo"] == "PDF_SIN_TEXTO"
+
+
+def _pdf_sin_texto() -> bytes:
+    """PDF de una página en blanco (sin capa de texto) para el caso EmptyPdfTextError."""
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
