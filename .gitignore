@@ -148,7 +148,8 @@ activemq-data/
 *.sage.py
 
 # Environments
-.env
+.env*
+!.env.example
 .envrc
 .venv
 env/
@@ -156,6 +157,15 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# OCI credentials
+.oci/
+*.pem
+*.key
+
+# Runtime secrets used by the OCI deployment
+deploy/oci/runtime.env
+deploy/oci/backend.env
 
 # Spyder project settings
 .spyderproject
@@ -216,3 +226,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ChromaDB local persistence
+chroma_db/
+backend/chroma_db/
+
+# Benchmark local NM-05
+chroma_benchmark_nm05/
+backend/chroma_benchmark_nm05/
+
+# Command Code (session/tooling artifacts)
+.commandcode/
+
+# Comparativa local NM-D1
+chroma_comparativa_nm_d1/
+backend/chroma_comparativa_nm_d1/

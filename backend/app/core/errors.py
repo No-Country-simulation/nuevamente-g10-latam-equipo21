@@ -1,0 +1,165 @@
+"""Errores de dominio y su mapeo al shape del contrato (NM-01 / NM-12):
+{"status": "error", "error": {"codigo": ..., "mensaje": ...}}.
+
+El mensaje que llega al cliente es siempre el `mensaje` público de la
+excepción: nunca trazas, ni credenciales, ni el texto de la excepción original
+(esa queda solo en el log, junto con el request id).
+"""
+
+import logging
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.core.request_context import get_request_id, request_id_de
+from app.core.log_sanitizer import error_sanitizado, sanitizar_texto
+
+logger = logging.getLogger("nuevamente.errors")
+
+
+def error_body(codigo: str, mensaje: str) -> dict:
+    return {"status": "error", "error": {"codigo": codigo, "mensaje": mensaje}}
+
+
+class AppError(Exception):
+    status_code: int = 500
+    codigo: str = "ERROR_INTERNO"
+    mensaje: str = "Ocurrió un error interno. Intenta nuevamente."
+
+    def __init__(self, mensaje: str | None = None) -> None:
+        self.mensaje = mensaje or type(self).mensaje
+        super().__init__(self.mensaje)
+
+
+class LLMError(AppError):
+    status_code = 502
+    codigo = "LLM_NO_DISPONIBLE"
+    mensaje = "No se pudo generar el contenido en este momento. Intenta nuevamente."
+
+
+class VectorStoreError(AppError):
+    status_code = 502
+    codigo = "VECTOR_STORE_NO_DISPONIBLE"
+    mensaje = "No se pudo recuperar el contexto del documento. Intenta nuevamente."
+
+class OCIAuthenticationError(AppError):
+    status_code = 502
+    codigo = "OCI_AUTENTICACION_ERROR"
+    mensaje = (
+        "No fue posible autenticarse con OCI Object Storage. "
+        "Verifica la configuración de credenciales e intenta nuevamente."
+    )    
+
+
+class SinContextoRelevanteError(AppError):
+    status_code = 422
+    codigo = "SIN_CONTEXTO_RELEVANTE"
+    mensaje = (
+        "No se encontró contenido del documento suficientemente relevante para "
+        "generar el material. Prueba con un documento más extenso o con otro título."
+    )
+
+
+class PipelineNoConfiguradaError(AppError):
+    status_code = 501
+    codigo = "PIPELINE_NO_CONFIGURADA"
+    mensaje = "La pipeline de adaptación aún no está disponible en este entorno."
+
+
+class DocumentoNoSoportadoError(AppError):
+    status_code = 400
+    codigo = "FORMATO_NO_SOPORTADO"
+    mensaje = (
+        "El formato del documento no está soportado. "
+        "Formatos permitidos: pdf, md, txt."
+    )
+
+
+class DocumentoSinTextoError(AppError):
+    status_code = 400
+    codigo = "PDF_SIN_TEXTO"
+    mensaje = "El PDF no contiene texto extraíble; OCR está fuera de alcance."
+
+
+class DocumentoInvalidoError(AppError):
+    status_code = 400
+    codigo = "DOCUMENTO_INVALIDO"
+    mensaje = "No se pudo procesar el documento. Verifica el archivo e intenta nuevamente."
+
+
+class ContenidoInsuficienteError(AppError):
+    status_code = 422
+    codigo = "CONTENIDO_INSUFICIENTE"
+    mensaje = (
+        "El documento es demasiado corto para generar conceptos clave verificables. "
+        "Prueba con un documento más extenso."
+    )
+
+
+# NM-21: código del contrato para errores que llegan como HTTPException (p. ej. 404/405).
+_CODIGO_POR_STATUS_HTTP = {
+    401: "NO_AUTORIZADO",
+    403: "NO_AUTORIZADO",
+    404: "NO_ENCONTRADO",
+    405: "METODO_NO_PERMITIDO",
+}
+
+
+def _codigo_http(status_code: int) -> str:
+    return _CODIGO_POR_STATUS_HTTP.get(status_code, "ERROR_HTTP")
+
+
+def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(AppError)
+    async def _app_error(request: Request, exc: AppError) -> JSONResponse:
+        causa = exc.__cause__ or exc.__context__
+        logger.error(
+            "[%s] %s (%s) en %s %s | causa: %s",
+            request_id_de(request), exc.codigo, exc.status_code,
+            request.method, request.url.path,
+            error_sanitizado(causa) if causa else "n/a",
+        )
+        return JSONResponse(status_code=exc.status_code, content=error_body(exc.codigo, exc.mensaje))
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        # NM-21: ningún endpoint debe devolver {"detail": ...}; se envuelve en el contrato.
+        # Se registra sobre la base de Starlette para capturar también los 404/405 del router.
+        if exc.status_code >= 500:
+            # Errores de servidor (5xx): el detalle técnico va SOLO al log; al cliente, mensaje
+            # genérico, para no filtrar internos.
+            logger.error(
+                "[%s] %s (%s) en %s %s | detalle: %s",
+                request_id_de(request), AppError.codigo, exc.status_code,
+                request.method, request.url.path,
+                sanitizar_texto(str(exc.detail)) if exc.detail else "n/a",
+            )
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=error_body(AppError.codigo, AppError.mensaje),
+                headers=exc.headers,
+            )
+        mensaje = str(exc.detail) if exc.detail else "La solicitud no pudo completarse."
+        logger.warning(
+            "[%s] %s (%s) en %s %s",
+            request_id_de(request), _codigo_http(exc.status_code), exc.status_code,
+            request.method, request.url.path,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=error_body(_codigo_http(exc.status_code), mensaje),
+            headers=exc.headers,
+        )
+
+    @app.exception_handler(Exception)
+    async def _unexpected(request: Request, exc: Exception) -> JSONResponse:
+        logger.error(
+            "[%s] ERROR_INTERNO no controlado en %s %s | %s",
+            request_id_de(request), request.method, request.url.path,
+            error_sanitizado(exc),
+        )
+        return JSONResponse(
+            status_code=500,
+            content=error_body(AppError.codigo, AppError.mensaje),
+        )        
