@@ -11,8 +11,10 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 import oci
+import oci.exceptions
 
 from app.core.config import Settings, settings
+from app.core.errors import OCIAuthenticationError
 from app.core.request_context import get_request_id
 from app.schemas.input import InputSchema
 from app.schemas.output import AlmacenamientoOCISchema, OutputSchema
@@ -93,14 +95,14 @@ class OCIStorageService:
         )
 
     def persist_generated_package(
-            self,
-            *,
-            payload: InputSchema,
-            response: OutputSchema,
+        self,
+        *,
+        payload: InputSchema,
+        response: OutputSchema,
     ) -> OutputSchema:
         object_name = build_generated_object_name(payload)
         completed_storage = AlmacenamientoOCISchema(
-            documento_id=payload.documento_id,  # <--- Agregado aquí
+            documento_id=payload.documento_id,
             bucket=self._bucket_name,
             objeto_id=object_name,
             status_upload="completado",
@@ -110,17 +112,17 @@ class OCIStorageService:
             object_name=object_name,
             content=package.model_dump_json().encode("utf-8"),
             content_type="application/json",
-            documento_id=payload.documento_id,  # <--- Pasado a _upload
+            documento_id=payload.documento_id,
         )
         return response.model_copy(update={"almacenamiento_oci": upload})
 
     def _upload(
-            self,
-            *,
-            object_name: str,
-            content: bytes,
-            content_type: str,
-            documento_id: str | None = None,
+        self,
+        *,
+        object_name: str,
+        content: bytes,
+        content_type: str,
+        documento_id: str | None = None,
     ) -> AlmacenamientoOCISchema:
         try:
             self._client.put_object(
@@ -131,6 +133,23 @@ class OCIStorageService:
                 content_type=content_type,
             )
             status_upload = "completado"
+        except oci.exceptions.ServiceError as error:
+            if error.status in (401, 403):
+                logger.error(
+                    "Error de autenticación o permisos en OCI (%s) [request_id=%s]: %s",
+                    error.status,
+                    get_request_id(),
+                    error.message,
+                )
+                raise OCIAuthenticationError() from error
+
+            logger.error(
+                "Falló la carga del objeto '%s' en OCI Object Storage (%s) [request_id=%s].",
+                object_name,
+                type(error).__name__,
+                get_request_id(),
+            )
+            status_upload = "error"
         except Exception as error:
             logger.error(
                 "Falló la carga del objeto '%s' en OCI Object Storage (%s) [request_id=%s].",
@@ -138,7 +157,7 @@ class OCIStorageService:
                 type(error).__name__,
                 get_request_id(),
             )
-            status_upload = "error"  
+            status_upload = "error"
 
         return AlmacenamientoOCISchema(
             documento_id=documento_id,
