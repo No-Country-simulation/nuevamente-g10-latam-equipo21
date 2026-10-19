@@ -1,5 +1,7 @@
 """Tests de NM-22: la recuperación cubre el documento completo."""
 from types import SimpleNamespace
+import logging
+from types import SimpleNamespace
 
 from app.core.config import settings
 from app.services.adaptacion_adapters import (
@@ -47,6 +49,24 @@ def _adapter(respuestas, total_chunks=1):
 def _frag(chunk_id, indice=None):
     metadatos = {} if indice is None else {"chunk_index": indice}
     return SimpleNamespace(chunk_id=chunk_id, score=0.9, metadatos=metadatos)
+
+
+def _respuestas_por_ventana(total, ancho):
+    """Ranking simulado que respeta top_k.
+
+    En la llamada i devuelve top_k chunks centrados en la ventana i, por lo que
+    incluye vecinos de otras zonas, como haria una busqueda por similitud real.
+    """
+    estado = {"i": 0}
+
+    def respuestas(consulta, top_k):
+        i = estado["i"]
+        estado["i"] += 1
+        inicio = max(0, i * ancho - (top_k - ancho) // 2)
+        fin = min(total, inicio + top_k)
+        return [_frag(f"c{j}", j) for j in range(inicio, fin)]
+
+    return respuestas
 
 
 def _payload(contenido):
@@ -145,19 +165,52 @@ def test_ventana_sin_resultados_no_rompe():
 
 def test_filtra_por_rango_de_chunk_index(monkeypatch):
     monkeypatch.setattr(settings, "RETRIEVAL_MAX_VENTANAS", 10)
+    monkeypatch.setattr(settings, "RETRIEVAL_VENTANA_CANDIDATOS", 8)
     monkeypatch.setattr(settings, "RETRIEVAL_FRAGMENTOS_POR_VENTANA", 2)
-    # 40 chunks y 10 ventanas: la ventana i cubre los índices [4i, 4i+4)
+    # 40 chunks y 10 ventanas: la ventana i cubre los indices [4i, 4i+4).
+    # El fake respeta top_k (8) y devuelve tambien vecinos de otras ventanas.
     adapter, llamadas = _adapter(
-        lambda c, k: [_frag(f"c{j}", j) for j in range(40)], total_chunks=40
+        _respuestas_por_ventana(total=40, ancho=4), total_chunks=40
     )
     ctx = adapter.obtener_contexto(_payload(_documento_largo()))
     assert len(llamadas) == 10
+    assert all(l["kwargs"]["top_k"] == 8 for l in llamadas)
     esperado = [f"c{4 * i + d}" for i in range(10) for d in (0, 1)]
     assert ctx.texto.split("|") == esperado
 
 
-def test_sin_candidatos_en_rango_usa_el_comportamiento_previo(monkeypatch):
+def test_con_indices_fuera_de_la_ventana_no_aporta_nada(monkeypatch, caplog):
     monkeypatch.setattr(settings, "RETRIEVAL_MAX_VENTANAS", 10)
-    adapter, _ = _adapter(lambda c, k: [_frag("x", 999)], total_chunks=40)
+    adapter, llamadas = _adapter(
+        lambda c, k: [_frag("x", 999)][:k], total_chunks=40
+    )
+    with caplog.at_level(logging.WARNING, logger="nuevamente.adaptacion"):
+        ctx = adapter.obtener_contexto(_payload(_documento_largo()))
+    assert len(llamadas) == 10
+    assert ctx.texto == "" and ctx.fuentes == []
+    avisos = [r for r in caplog.records if "sin candidatos en el rango" in r.getMessage()]
+    assert len(avisos) == 10
+
+
+def test_ventana_sin_candidatos_en_rango_no_rellena_con_otras_zonas(monkeypatch):
+    monkeypatch.setattr(settings, "RETRIEVAL_MAX_VENTANAS", 10)
+    monkeypatch.setattr(settings, "RETRIEVAL_VENTANA_CANDIDATOS", 8)
+    monkeypatch.setattr(settings, "RETRIEVAL_FRAGMENTOS_POR_VENTANA", 1)
+    # Todas las ventanas reciben solo chunks 0..7: unicamente las ventanas 0 y 1
+    # (rangos [0,4) y [4,8)) tienen candidatos propios; el resto debe quedar vacio.
+    adapter, _ = _adapter(
+        lambda c, k: [_frag(f"c{j}", j) for j in range(8)][:k], total_chunks=40
+    )
     ctx = adapter.obtener_contexto(_payload(_documento_largo()))
-    assert ctx.texto == "x"
+    assert ctx.texto.split("|") == ["c0", "c4"]
+
+
+def test_sin_chunk_index_usa_el_comportamiento_previo(monkeypatch):
+    monkeypatch.setattr(settings, "RETRIEVAL_MAX_VENTANAS", 10)
+    monkeypatch.setattr(settings, "RETRIEVAL_TOP_K", 20)  # previo = 20 // 10 = 2
+    adapter, _ = _adapter(
+        lambda c, k: [_frag(f"s{j}") for j in range(20)][:k], total_chunks=40
+    )
+    ctx = adapter.obtener_contexto(_payload(_documento_largo()))
+    # sin chunk_index, cada ventana toma los primeros 2 y se deduplican
+    assert ctx.texto.split("|") == ["s0", "s1"]

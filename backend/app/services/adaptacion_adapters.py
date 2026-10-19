@@ -137,8 +137,9 @@ class ContextoRealAdapter:
         Cada ventana pide RETRIEVAL_VENTANA_CANDIDATOS fragmentos y conserva los mejores
         RETRIEVAL_FRAGMENTOS_POR_VENTANA cuyo chunk_index cae en el rango de esa ventana
         (proporcional al total de chunks del documento). Así una ventana no puede traer
-        fragmentos de otra zona. Si ninguno cae en el rango, o los fragmentos no traen
-        chunk_index, usa el comportamiento previo: los primeros max(1, TOP_K // ventanas).
+        fragmentos de otra zona. Si hay chunk_index pero ninguno cae en el rango, la
+        ventana no aporta nada. Si los fragmentos no traen chunk_index, usa el
+        comportamiento previo: los primeros max(1, TOP_K // ventanas).
         En PDFs de varias páginas el rango es aproximado (ventanas por caracteres,
         chunks por página).
         """
@@ -163,8 +164,16 @@ class ContextoRealAdapter:
                 f for f in candidatos
                 if _chunk_index(f) is not None and lo <= _chunk_index(f) < hi
             ]
+            hay_indices = any(_chunk_index(f) is not None for f in candidatos)
             if en_rango:
                 elegidos = sorted(en_rango[:por_ventana], key=_chunk_index)
+            elif hay_indices:
+                # Hay indices, pero ninguno cae en esta zona: no se rellena con otras zonas.
+                logger.warning(
+                    "Ventana %d/%d sin candidatos en el rango de chunks [%d, %d)",
+                    i + 1, ventanas, lo, hi,
+                )
+                elegidos = []
             else:
                 elegidos = candidatos[:previo]
             for fragmento in elegidos:
