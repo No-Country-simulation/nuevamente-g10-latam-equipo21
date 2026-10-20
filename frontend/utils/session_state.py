@@ -1,5 +1,7 @@
 """Inicialización y manejo del estado de sesión de Streamlit."""
 
+import hashlib
+
 import streamlit as st
 
 
@@ -31,13 +33,13 @@ def init_session_state() -> None:
 def file_signature(uploaded_file) -> str | None:
     """Identidad estable de un archivo subido (NM-35).
 
-    Se usa para distinguir "el usuario subió un archivo distinto" de
-    "el usuario cambió un selector", sin depender solo del nombre (podría
-    resubir un archivo con el mismo nombre pero contenido distinto).
+    Combina nombre y hash del contenido: dos archivos con el mismo nombre
+    y tamaño pero contenido distinto se consideran archivos distintos.
     """
     if uploaded_file is None:
         return None
-    return f"{uploaded_file.name}:{uploaded_file.size}"
+    digest = hashlib.sha256(uploaded_file.getvalue()).hexdigest()
+    return f"{uploaded_file.name}:{digest}"
 
 
 def clear_result() -> None:
