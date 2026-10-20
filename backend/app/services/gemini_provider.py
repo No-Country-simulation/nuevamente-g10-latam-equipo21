@@ -12,6 +12,7 @@ from typing import TypeVar
 
 import httpx
 from google.genai.errors import APIError
+from langchain_core.exceptions import ModelRateLimitError
 from langchain_core.messages import BaseMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
@@ -68,12 +69,17 @@ class GeminiProvider:
         try:
             try:
                 resultado = self._invocar(self._modelo_chat, messages, schema)
-            except APIError as exc:
+            except (APIError, ModelRateLimitError) as exc:
                 if self._modelo_respaldo is None or not self._permite_respaldo(exc):
                     raise
+                motivo = (
+                    "429/RESOURCE_EXHAUSTED"
+                    if isinstance(exc, ModelRateLimitError)
+                    else f"{exc.code}/{exc.status}"
+                )
                 logger.warning(
                     "Gemini usa modelo de respaldo principal=%s respaldo=%s motivo=%s",
-                    self._nombre_modelo, self._nombre_respaldo, f"{exc.code}/{exc.status}",
+                    self._nombre_modelo, self._nombre_respaldo, motivo,
                 )
                 resultado = self._invocar(self._modelo_respaldo, messages, schema)
         except (TimeoutError, httpx.TimeoutException) as exc:
@@ -95,7 +101,9 @@ class GeminiProvider:
         return resultado
 
     @staticmethod
-    def _permite_respaldo(exc: APIError) -> bool:
+    def _permite_respaldo(exc: APIError | ModelRateLimitError) -> bool:
+        if isinstance(exc, ModelRateLimitError):
+            return True
         return exc.code in (429, 503) or exc.status in (
             "RESOURCE_EXHAUSTED", "UNAVAILABLE"
         )

@@ -11,6 +11,7 @@ import pytest
 from google.genai.errors import APIError
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableLambda
+from langchain_google_genai.chat_models import GoogleRateLimitError
 from pydantic import BaseModel
 
 from app.services import gemini_provider as gemini_provider_module
@@ -197,8 +198,22 @@ def test_no_usa_respaldo_si_el_principal_responde(monkeypatch):
     assert respaldo.invocaciones == 0
 
 
+def test_usa_respaldo_ante_429_clasificado_por_langchain(monkeypatch, caplog):
+    principal = _ChatModelFalso(excepcion=GoogleRateLimitError("cuota simulada"))
+    respaldo = _ChatModelFalso(contenido='{"titulo": "Índices", "items": []}')
+    provider = _crear_provider_con_respaldo(monkeypatch, principal, respaldo)
+
+    resultado = provider.generate_structured(
+        [HumanMessage(content="hola")], _RespuestaPrueba
+    )
+
+    assert resultado.titulo == "Índices"
+    assert principal.invocaciones == respaldo.invocaciones == 1
+    assert "motivo=429/RESOURCE_EXHAUSTED" in caplog.text
+
+
 def test_si_fallan_ambos_modelos_mantiene_error_del_proveedor(monkeypatch):
-    principal = _ChatModelFalso(excepcion=_error_api(429, "RESOURCE_EXHAUSTED"))
+    principal = _ChatModelFalso(excepcion=GoogleRateLimitError("cuota simulada"))
     respaldo = _ChatModelFalso(excepcion=_error_api(503, "UNAVAILABLE"))
     provider = _crear_provider_con_respaldo(monkeypatch, principal, respaldo)
 
@@ -236,12 +251,16 @@ def test_respuesta_fuera_de_esquema_no_activa_respaldo(monkeypatch):
     assert respaldo.invocaciones == 0
 
 
-def test_sin_respaldo_configurado_no_crea_otro_modelo(monkeypatch):
+@pytest.mark.parametrize(
+    "excepcion",
+    [_error_api(503, "UNAVAILABLE"), GoogleRateLimitError("cuota simulada")],
+)
+def test_sin_respaldo_configurado_no_crea_otro_modelo(monkeypatch, excepcion):
     modelos_creados = []
 
     def _fabrica(**kwargs):
         modelos_creados.append(kwargs["model"])
-        return _ChatModelFalso(excepcion=_error_api(503, "UNAVAILABLE"))
+        return _ChatModelFalso(excepcion=excepcion)
 
     monkeypatch.setattr(gemini_provider_module, "ChatGoogleGenerativeAI", _fabrica)
     provider = GeminiProvider(
