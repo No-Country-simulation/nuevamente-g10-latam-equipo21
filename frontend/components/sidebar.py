@@ -40,7 +40,9 @@ def _select_option(field: str, label: str, default: str, *, disabled: bool) -> s
 	)
 
 
-def render_adaptation_options(*, has_source_document: bool) -> dict[str, str]:
+def render_adaptation_options(
+	*, has_source_document: bool, logout_url: str | None = None
+) -> dict[str, str]:
 	with st.sidebar:
 		st.markdown('<div class="sidebar-brand">N<span>·</span>M</div>', unsafe_allow_html=True)
 		st.markdown("### Parámetros del recurso")
@@ -54,6 +56,11 @@ def render_adaptation_options(*, has_source_document: bool) -> dict[str, str]:
 			st.caption("Carga un documento para habilitar estas opciones.")
 		st.divider()
 		st.markdown('<div class="sidebar-note"><span>FUENTE → CONTENIDO</span><br>La adaptación conserva el anclaje al documento original.</div>', unsafe_allow_html=True)
+		if logout_url:
+			st.markdown(
+				f'<a class="logout-link" href="{logout_url}" target="_self">Cerrar sesión</a>',
+				unsafe_allow_html=True,
+			)
 
 	return {
 		"perfil_destinatario": profile,

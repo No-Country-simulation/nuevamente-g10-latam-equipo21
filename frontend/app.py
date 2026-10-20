@@ -25,6 +25,7 @@ API_BASE_URL = os.getenv(
     "API_BASE_URL",
     "http://localhost:8000/api/v1",
 ).rstrip("/")
+LOGOUT_URL = os.getenv("LOGOUT_URL", "").strip()
 
 
 def _timeout_from_environment(name: str, default: int) -> int:
@@ -119,6 +120,7 @@ has_source_document = (
 )
 options = render_adaptation_options(
     has_source_document=has_source_document,
+    logout_url=LOGOUT_URL,
 )
 st.session_state["loaded_document"] = source_document
 st.session_state["selected_parameters"] = options.copy()

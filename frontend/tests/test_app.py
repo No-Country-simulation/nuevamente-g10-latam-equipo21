@@ -340,3 +340,36 @@ def test_footer_shows_connected_when_api_returns_validation_error(monkeypatch):
 	assert "http://" not in footer
 	assert "API conectada" in footer
 	assert "Sin conexión" not in footer
+
+
+# --- NM-41: cerrar sesión ---
+def _valores_markdown(app) -> list[str]:
+	return [m.value for m in app.markdown] + [
+		m.value for m in app.sidebar.markdown
+	]
+
+
+def test_logout_link_visible_cuando_hay_logout_url(monkeypatch):
+	monkeypatch.setenv("LOGOUT_URL", "/salir")
+
+	app = _app()
+
+	enlaces = {
+		valor for valor in _valores_markdown(app)
+		if 'class="logout-link"' in valor
+	}
+	assert len(enlaces) == 1
+	enlace = next(iter(enlaces))
+	assert 'href="/salir"' in enlace
+	assert "Cerrar sesión" in enlace
+
+
+def test_logout_link_oculto_sin_logout_url(monkeypatch):
+	monkeypatch.delenv("LOGOUT_URL", raising=False)
+
+	app = _app()
+
+	assert not any(
+		'class="logout-link"' in valor
+		for valor in _valores_markdown(app)
+	)
