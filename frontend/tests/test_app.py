@@ -373,3 +373,14 @@ def test_logout_link_oculto_sin_logout_url(monkeypatch):
 		'class="logout-link"' in valor
 		for valor in _valores_markdown(app)
 	)
+
+
+def test_logout_link_oculto_con_logout_url_externa(monkeypatch):
+	monkeypatch.setenv("LOGOUT_URL", "https://evil.example.com/salir")
+
+	app = _app()
+
+	assert not any(
+		'class="logout-link"' in valor
+		for valor in _valores_markdown(app)
+	)
