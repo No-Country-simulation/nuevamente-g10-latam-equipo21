@@ -134,8 +134,9 @@ class ContextoRealAdapter:
     def _recuperar_por_ventanas(self, consultas: list[str], doc_id: str) -> list:
         """Recupera por sección y une sin duplicados, en orden de documento (NM-22, NM-33).
 
-        Cada ventana pide RETRIEVAL_VENTANA_CANDIDATOS fragmentos y conserva los mejores
-        RETRIEVAL_FRAGMENTOS_POR_VENTANA cuyo chunk_index cae en el rango de esa ventana
+        Cada ventana pide RETRIEVAL_VENTANA_CANDIDATOS fragmentos y conserva al menos
+        RETRIEVAL_FRAGMENTOS_POR_VENTANA (hasta el tamaño proporcional de su rango, acotado por
+        el presupuesto de contexto) cuyo chunk_index cae en el rango de esa ventana
         (proporcional al total de chunks del documento). Así una ventana no puede traer
         fragmentos de otra zona. Si hay chunk_index pero ninguno cae en el rango, la
         ventana no aporta nada. Si los fragmentos no traen chunk_index, usa el
@@ -145,9 +146,11 @@ class ContextoRealAdapter:
         """
         ventanas = len(consultas)
         previo = max(1, settings.RETRIEVAL_TOP_K // ventanas)
-        candidatos_k = max(settings.RETRIEVAL_VENTANA_CANDIDATOS, previo)
-        por_ventana = max(1, settings.RETRIEVAL_FRAGMENTOS_POR_VENTANA)
         total_chunks = self._store.count_document(doc_id)
+        # NM-33: el cupo de cada ventana crece con el tamaño de su rango; nunca baja del valor configurado.
+        cupo_base = math.ceil(total_chunks / ventanas)
+        por_ventana = max(1, settings.RETRIEVAL_FRAGMENTOS_POR_VENTANA, cupo_base)
+        candidatos_k = max(settings.RETRIEVAL_VENTANA_CANDIDATOS, previo, por_ventana)
 
         vistos: set[str] = set()
         unidos = []
@@ -158,6 +161,17 @@ class ContextoRealAdapter:
                 documento_id=doc_id,
                 top_k=candidatos_k,
             )
+            if i == 0 and candidatos:
+                # NM-33: acota el cupo al presupuesto de contexto con el tamaño real de los fragmentos.
+                from app.services.retrieval_service import contar_tokens_aproximado
+
+                medio = sum(contar_tokens_aproximado(f.texto) for f in candidatos) / len(candidatos)
+                caben = max(1, int(settings.RETRIEVAL_MAX_CONTEXT_TOKENS // (medio + 20)))  # 20: cabecera [Fuente: ...] y separadores (estimado)
+                por_ventana = max(
+                    1,
+                    settings.RETRIEVAL_FRAGMENTOS_POR_VENTANA,
+                    math.ceil(min(total_chunks, caben) / ventanas),
+                )
             lo = i * total_chunks // ventanas
             hi = (i + 1) * total_chunks // ventanas
             en_rango = [

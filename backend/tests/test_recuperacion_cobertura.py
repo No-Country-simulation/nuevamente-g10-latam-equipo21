@@ -1,5 +1,5 @@
 """Tests de NM-22: la recuperación cubre el documento completo."""
-from types import SimpleNamespace
+
 import logging
 from types import SimpleNamespace
 
@@ -46,9 +46,14 @@ def _adapter(respuestas, total_chunks=1):
     return adapter, llamadas
 
 
-def _frag(chunk_id, indice=None):
+def _frag(chunk_id, indice=None, texto=None):
     metadatos = {} if indice is None else {"chunk_index": indice}
-    return SimpleNamespace(chunk_id=chunk_id, score=0.9, metadatos=metadatos)
+    return SimpleNamespace(
+        chunk_id=chunk_id,
+        score=0.9,
+        metadatos=metadatos,
+        texto=texto if texto is not None else f"texto {chunk_id}",
+    )
 
 
 def _respuestas_por_ventana(total, ancho):
@@ -175,7 +180,8 @@ def test_filtra_por_rango_de_chunk_index(monkeypatch):
     ctx = adapter.obtener_contexto(_payload(_documento_largo()))
     assert len(llamadas) == 10
     assert all(l["kwargs"]["top_k"] == 8 for l in llamadas)
-    esperado = [f"c{4 * i + d}" for i in range(10) for d in (0, 1)]
+    # Cada ventana conserva todos los chunks de su rango (cupo proporcional, NM-33).
+    esperado = [f"c{i}" for i in range(40)]
     assert ctx.texto.split("|") == esperado
 
 
@@ -195,14 +201,15 @@ def test_con_indices_fuera_de_la_ventana_no_aporta_nada(monkeypatch, caplog):
 def test_ventana_sin_candidatos_en_rango_no_rellena_con_otras_zonas(monkeypatch):
     monkeypatch.setattr(settings, "RETRIEVAL_MAX_VENTANAS", 10)
     monkeypatch.setattr(settings, "RETRIEVAL_VENTANA_CANDIDATOS", 8)
-    monkeypatch.setattr(settings, "RETRIEVAL_FRAGMENTOS_POR_VENTANA", 1)
+    monkeypatch.setattr(settings, "RETRIEVAL_FRAGMENTOS_POR_VENTANA", 1) # piso; el cupo real es proporcional al rango
     # Todas las ventanas reciben solo chunks 0..7: unicamente las ventanas 0 y 1
     # (rangos [0,4) y [4,8)) tienen candidatos propios; el resto debe quedar vacio.
     adapter, _ = _adapter(
         lambda c, k: [_frag(f"c{j}", j) for j in range(8)][:k], total_chunks=40
     )
     ctx = adapter.obtener_contexto(_payload(_documento_largo()))
-    assert ctx.texto.split("|") == ["c0", "c4"]
+    # Las ventanas 0 y 1 conservan los 4 chunks de su rango cada una.
+    assert ctx.texto.split("|") == ["c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7"]
 
 
 def test_sin_chunk_index_usa_el_comportamiento_previo(monkeypatch):
@@ -214,3 +221,21 @@ def test_sin_chunk_index_usa_el_comportamiento_previo(monkeypatch):
     ctx = adapter.obtener_contexto(_payload(_documento_largo()))
     # sin chunk_index, cada ventana toma los primeros 2 y se deduplican
     assert ctx.texto.split("|") == ["s0", "s1"]
+
+
+def test_el_cupo_se_acota_por_presupuesto_de_contexto(monkeypatch):
+    monkeypatch.setattr(settings, "RETRIEVAL_MAX_VENTANAS", 10)
+    monkeypatch.setattr(settings, "RETRIEVAL_VENTANA_CANDIDATOS", 8)
+    monkeypatch.setattr(settings, "RETRIEVAL_FRAGMENTOS_POR_VENTANA", 1)
+    monkeypatch.setattr(settings, "RETRIEVAL_MAX_CONTEXT_TOKENS", 6000)
+    # 40 chunks de ~4000 caracteres (~1000 tokens): caben unos 5 en el presupuesto.
+    texto_largo = "x" * 4000
+    adapter, _ = _adapter(
+        lambda c, k: [_frag(f"c{j}", j, texto_largo) for j in range(40)][:k],
+        total_chunks=40,
+    )
+    ctx = adapter.obtener_contexto(_payload(_documento_largo()))
+    elegidos = ctx.texto.split("|")
+    # Sin acotar saldrian 4 por ventana (40 en total). Con presupuesto, mucho menos.
+    assert len(elegidos) < 40
+    assert len(elegidos) <= 10
