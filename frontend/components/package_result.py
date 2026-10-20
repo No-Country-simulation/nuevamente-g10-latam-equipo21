@@ -170,6 +170,13 @@ def render_package_result(result: dict) -> None:
     for concept in metadata["conceptos_clave"]:
         st.write(f"• {concept}")
 
+    # Sin prerrequisitos la sección no se muestra, para no sumar ruido al encabezado.
+    prerequisites = metadata.get("prerrequisitos") or []
+    if prerequisites:
+        st.markdown("**Prerrequisitos**")
+        for prerequisite in prerequisites:
+            st.write(f"• {prerequisite}")
+
     renderer = RENDERERS.get(output_format)
     if renderer:
         renderer(content["items"])

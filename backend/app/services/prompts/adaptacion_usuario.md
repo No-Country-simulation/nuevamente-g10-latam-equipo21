@@ -10,4 +10,4 @@ Instrucciones de personalización para esta adaptación:
 - Nicho / sector: {instrucciones_nicho}
 - Nivel de detalle: {instrucciones_nivel_detalle}
 
-Generá el JSON de "contenido_adaptado" siguiendo estrictamente las reglas indicadas en el mensaje de sistema.
+Genera el JSON de "contenido_adaptado" siguiendo estrictamente las reglas indicadas en el mensaje de sistema.

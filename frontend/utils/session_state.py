@@ -15,6 +15,7 @@ def init_session_state() -> None:
         "quiz_answers": {},
         "quiz_confirmed_answers": {},
         "quiz_attempt": 0,
+        "api_status": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:

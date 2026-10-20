@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     # Configuración de Google Gemini
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL_NAME: str = "gemini-3.8-flash"
+    GEMINI_FALLBACK_MODEL_NAME: str = ""
     GEMINI_EMBEDDING_MODEL_NAME: str = "gemini-embedding-001"
     GEMINI_TIMEOUT_SECONDS: float = 30.0
 
@@ -70,6 +71,10 @@ class Settings(BaseSettings):
 
     # Orquestación multi-agente con LangGraph (NM-D1)
     MULTI_AGENT_MAX_ITERATIONS: int = 3
+
+    # Usa el grafo multi-agente en el endpoint de adaptación (NM-28).
+    # False = orquestación lineal (NM-08 + NM-09), que queda como fallback.
+    USE_MULTIAGENT: bool = False
 
     # Oracle Cloud Infrastructure (OCI Object Storage)
     OCI_AUTH_MODE: Literal["instance_principal", "api_key"] = "instance_principal"

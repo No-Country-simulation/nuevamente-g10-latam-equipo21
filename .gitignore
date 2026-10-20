@@ -163,6 +163,12 @@ venv.bak/
 *.pem
 *.key
 
+# Runtime secrets used by the OCI deployment
+deploy/oci/runtime.env
+deploy/oci/backend.env
+deploy/oci/*.htpasswd
+deploy/oci/letsencrypt/
+
 # Spyder project settings
 .spyderproject
 .spyproject

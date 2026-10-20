@@ -4,12 +4,19 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Callable
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
-from app.core.errors import OCIAuthenticationError
+from app.core.errors import (
+    DocumentoInvalidoError,
+    DocumentoNoSoportadoError,
+    DocumentoSinTextoError,
+    OCIAuthenticationError,
+)
 
 from app.services.document_ingestion import (
     DocumentExtractionError,
+    EmptyPdfTextError,
+    UnsupportedDocumentFormatError,
     extract_document,
 )
 from app.services.oci_storage_service import (
@@ -73,11 +80,12 @@ async def extract_document_endpoint(
             "metadata": asdict(metadata),
             "pages": [asdict(pagina) for pagina in document.pages],
         }
+    except UnsupportedDocumentFormatError as error:
+        raise DocumentoNoSoportadoError(str(error)) from error
+    except EmptyPdfTextError as error:
+        raise DocumentoSinTextoError(str(error)) from error
     except DocumentExtractionError as error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(error),
-        ) from error
+        raise DocumentoInvalidoError(str(error)) from error
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
