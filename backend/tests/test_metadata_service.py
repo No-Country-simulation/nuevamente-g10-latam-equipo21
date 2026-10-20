@@ -207,4 +207,48 @@ def test_adaptador_real_delega_con_los_datos_del_payload():
     assert recibido["documento_contenido"] == DOCUMENTO
     assert recibido["contenido_adaptado"] is contenido
     assert recibido["llm_provider"] is llm
-    
+
+
+def _contenido_con_textos(*textos):
+    items = [
+        TutorialItem(paso_numero=i + 1, titulo_paso=f"Paso {i + 1}", contenido=t, codigo_ejemplo=None)
+        for i, t in enumerate(textos)
+    ]
+    return ContenidoAdaptadoSchema(titulo="Redes", introduccion_contextualizada="Intro.", items=items)
+
+
+def test_prefiere_conceptos_que_aparecen_en_los_items():
+    llm = LLMFalso(
+        MetadatosLLM(
+            conceptos_clave=["VCN", "Subredes", "Internet Gateway", "Security Lists"],
+            prerrequisitos=[],
+        )
+    )
+    meta = generar_metadatos_aprendizaje(
+        documento_contenido=DOCUMENTO,
+        contenido_adaptado=_contenido_con_textos(
+            "La VCN se divide en subredes.", "El Internet Gateway da salida a Internet."
+        ),
+        perfil_destinatario="Principiante",
+        formato_salida="Tutorial",
+        llm_provider=llm,
+    )
+    assert meta.conceptos_clave == ["VCN", "Subredes", "Internet Gateway"]
+
+
+def test_conserva_los_conceptos_del_documento_si_los_items_cubren_menos_de_tres():
+    llm = LLMFalso(
+        MetadatosLLM(
+            conceptos_clave=["VCN", "Subredes", "Internet Gateway", "Security Lists"],
+            prerrequisitos=[],
+        )
+    )
+    meta = generar_metadatos_aprendizaje(
+        documento_contenido=DOCUMENTO,
+        contenido_adaptado=_contenido_con_textos("Solo se habla de la VCN."),
+        perfil_destinatario="Principiante",
+        formato_salida="Tutorial",
+        llm_provider=llm,
+    )
+    assert meta.conceptos_clave == ["VCN", "Subredes", "Internet Gateway", "Security Lists"]
+    assert llm.llamadas == 1

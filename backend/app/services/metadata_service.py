@@ -201,6 +201,9 @@ def generar_metadatos_aprendizaje(
     perfil = PerfilDestinatario(perfil_destinatario)
     formato = FormatoSalida(formato_salida)
     documento_normalizado = _normalizar(documento_contenido)
+    items_normalizados = _normalizar(
+        " ".join(_textos([item.model_dump() for item in contenido_adaptado.items]))
+    )
     mensajes = _construir_mensajes(
         documento_contenido=documento_contenido,
         contenido_adaptado=contenido_adaptado,
@@ -210,6 +213,14 @@ def generar_metadatos_aprendizaje(
     for intento in range(1, INTENTOS_MAXIMOS + 1):
         bruto = llm_provider.generate_structured(mensajes, MetadatosLLM)
         conceptos = _filtrar_conceptos(bruto.conceptos_clave, documento_normalizado)
+        # NM-33: se prefieren los conceptos que algun item trabaja, solo si quedan al
+        # menos MIN_CONCEPTOS. Si no, se conservan los verificados contra el documento.
+        en_items = [
+            c for c in conceptos
+            if _aparece_en_documento(_normalizar(c), items_normalizados)
+        ]
+        if len(en_items) >= MIN_CONCEPTOS:
+            conceptos = en_items
         if len(conceptos) >= MIN_CONCEPTOS:
             prerrequisitos = _filtrar_prerrequisitos(bruto.prerrequisitos, documento_normalizado)
             break
