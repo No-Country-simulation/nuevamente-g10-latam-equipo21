@@ -63,7 +63,7 @@ def extract_document(
     if document_format not in SUPPORTED_FORMATS:
         supported = ", ".join(sorted(SUPPORTED_FORMATS))
         raise UnsupportedDocumentFormatError(
-            f"Formato no soportado: '.{document_format or path.name}'. "
+            f"Formato no soportado para el archivo '{display_name}'. "
             f"Formatos permitidos: {supported}."
         )
 

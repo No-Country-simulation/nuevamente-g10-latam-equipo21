@@ -277,3 +277,24 @@ def test_fixture_archivo_vacio_devuelve_400():
     body = response.json()
     assert body["error"]["codigo"] == "DOCUMENTO_INVALIDO"
     assert "vacío" in body["error"]["mensaje"]
+
+def test_archivo_sin_extension_muestra_nombre_original():
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={
+            "file": (
+                "sin_extension",
+                b"Contenido de prueba",
+                "application/octet-stream",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["error"]["codigo"] == "FORMATO_NO_SOPORTADO"
+    assert "sin_extension" in body["error"]["mensaje"]
+    assert "Formatos permitidos" in body["error"]["mensaje"]
+    assert "tmp" not in body["error"]["mensaje"]
