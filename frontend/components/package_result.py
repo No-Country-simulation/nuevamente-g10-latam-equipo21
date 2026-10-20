@@ -2,6 +2,8 @@
 
 import streamlit as st
 
+from components.sidebar import OPTIONS
+
 
 def render_flashcards(items: list[dict]) -> None:
     for number, item in enumerate(items, 1):
@@ -83,6 +85,32 @@ RENDERERS = {
     "Resumen_Ejecutivo": render_executive_summary,
     "Guion_Clase": render_lesson_plan,
 }
+
+
+def render_applied_context(
+    parametros: dict | None,
+    archivo_origen: str | None,
+) -> None:
+    """Encabezado con el archivo y los parámetros usados para ESTE resultado.
+
+    NM-35: se muestra siempre junto al resultado, tomando los valores
+    "congelados" al momento de generar (session_state["applied_parameters"]),
+    nunca la selección en vivo de la barra lateral — así no hay ambigüedad
+    si el usuario cambió un selector después de generar (ver NM-19).
+    """
+    if not parametros:
+        return
+
+    def etiqueta(campo: str, valor: str | None) -> str:
+        return OPTIONS.get(campo, {}).get(valor, valor or "—")
+
+    st.caption(
+        f"📄 {archivo_origen or '—'}  ·  "
+        f"👤 {etiqueta('perfil_destinatario', parametros.get('perfil_destinatario'))}  ·  "
+        f"📦 {etiqueta('formato_salida', parametros.get('formato_salida'))}  ·  "
+        f"🏢 {etiqueta('nicho_sector', parametros.get('nicho_sector'))}  ·  "
+        f"🎚️ {etiqueta('nivel_detalle', parametros.get('nivel_detalle'))}"
+    )
 
 
 def render_package_result(result: dict) -> None:
