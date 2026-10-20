@@ -6,12 +6,12 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from app.services.document_ingestion import (
+    DocumentExtractionError,
     DocumentPage,
     EmptyPdfTextError,
     UnsupportedDocumentFormatError,
     extract_document,
 )
-
 
 def test_extracts_and_normalizes_markdown(tmp_path: Path):
     source = tmp_path / "guide.md"
@@ -95,3 +95,36 @@ def _pdf_page(content: str):
     stream.set_data(f"BT /F1 12 Tf 72 720 Td ({content}) Tj ET".encode())
     page[NameObject("/Contents")] = stream
     return page
+
+def test_rejects_latin1_text_with_controlled_error(tmp_path: Path):
+    source = tmp_path / "texto_latin1.txt"
+    source.write_bytes(
+        "Información técnica en español".encode("latin-1")
+    )
+
+    with pytest.raises(
+        DocumentExtractionError,
+        match="La codificación debe ser UTF-8",
+    ):
+        extract_document(source)
+
+def test_rejects_empty_text_file(tmp_path: Path):
+    source = tmp_path / "archivo_vacio.txt"
+    source.write_bytes(b"")
+
+    with pytest.raises(
+        DocumentExtractionError,
+        match="está vacío o no contiene texto válido",
+    ):
+        extract_document(source)
+
+
+def test_rejects_whitespace_only_markdown(tmp_path: Path):
+    source = tmp_path / "archivo_vacio.md"
+    source.write_text("   \n  \t  \n", encoding="utf-8")
+
+    with pytest.raises(
+        DocumentExtractionError,
+        match="está vacío o no contiene texto válido",
+    ):
+        extract_document(source)

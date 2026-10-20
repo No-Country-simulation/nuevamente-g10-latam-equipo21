@@ -50,9 +50,14 @@ class ExtractedDocument:
     pages: tuple[DocumentPage, ...] = ()
 
 
-def extract_document(file_path: str | Path) -> ExtractedDocument:
+def extract_document(
+        file_path: str | Path,
+        *,
+        original_filename: str | None = None,
+    ) -> ExtractedDocument:
     """Extraer texto plano normalizado de un archivo PDF, Markdown o de texto.."""
     path = Path(file_path)
+    display_name = original_filename or path.name
     document_format = path.suffix.lower().lstrip(".")
 
     if document_format not in SUPPORTED_FORMATS:
@@ -63,7 +68,7 @@ def extract_document(file_path: str | Path) -> ExtractedDocument:
         )
 
     if document_format == "pdf":
-        text, raw_pages = _extract_pdf(path)
+        text, raw_pages = _extract_pdf(path, display_name)
         page_count = len(raw_pages)
         pages = _build_pages(raw_pages)
     else:
@@ -72,8 +77,14 @@ def extract_document(file_path: str | Path) -> ExtractedDocument:
         pages = ()
 
     normalized_text = _normalize_text(text)
+
+    if not normalized_text:
+        raise DocumentExtractionError(
+            f"El archivo '{display_name}' está vacío o no contiene texto válido."
+        )
+
     metadata = DocumentMetadata(
-        filename=path.name,
+        filename=display_name,
         format=document_format,
         character_count=len(normalized_text),
         page_count=page_count,
@@ -81,15 +92,21 @@ def extract_document(file_path: str | Path) -> ExtractedDocument:
     return ExtractedDocument(text=normalized_text, metadata=metadata, pages=pages)
 
 
-def _extract_pdf(path: Path) -> tuple[str, list[str]]:
-    reader = PdfReader(str(path))
-    pages_text = [page.extract_text() or "" for page in reader.pages]
-    text = "\n\n".join(pages_text)
-    if not text.strip():
-        raise EmptyPdfTextError(
-            f"El PDF '{path.name}' no contiene texto extraíble; OCR está fuera de alcance."
-        )
-    return text, pages_text
+def _extract_pdf(
+        path: Path,
+        display_name: str,
+    ) -> tuple[str, list[str]]:
+        reader = PdfReader(str(path))
+        pages_text = [page.extract_text() or "" for page in reader.pages]
+        text = "\n\n".join(pages_text)
+
+        if not text.strip():
+            raise EmptyPdfTextError(
+                f"El PDF '{display_name}' no contiene texto extraíble; "
+                "OCR está fuera de alcance."
+            )
+
+        return text, pages_text
 
 
 def _build_pages(raw_pages: list[str]) -> tuple[DocumentPage, ...]:
@@ -103,8 +120,14 @@ def _build_pages(raw_pages: list[str]) -> tuple[DocumentPage, ...]:
 
 
 def _read_text(path: Path) -> str:
-    with path.open(encoding="utf-8-sig", newline="") as file:
-        return file.read()
+    try:
+        with path.open(encoding="utf-8-sig", newline="") as file:
+            return file.read()
+    except UnicodeDecodeError as error:
+        raise DocumentExtractionError(
+            "No se pudo leer el archivo de texto. "
+            "La codificación debe ser UTF-8."
+        ) from error
 
 
 def _normalize_text(text: str) -> str:

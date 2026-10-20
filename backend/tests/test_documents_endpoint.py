@@ -10,6 +10,9 @@ from app.main import app
 from app.schemas.output import AlmacenamientoOCISchema
 from app.services.oci_storage_service import get_oci_storage_service_factory
 
+from pathlib import Path
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 client = TestClient(app)
 _LOGGER = "app.api.v1.endpoints.documents"
@@ -170,6 +173,31 @@ def test_extract_document_endpoint_returns_contract_error_for_pdf_without_text()
     assert body["status"] == "error"
     assert body["error"]["codigo"] == "PDF_SIN_TEXTO"
 
+def test_pdf_sin_texto_muestra_nombre_original():
+    filename = "05_pdf_escaneado_sin_texto.pdf"
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={
+            "file": (
+                filename,
+                _pdf_sin_texto(),
+                "application/pdf",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["error"]["codigo"] == "PDF_SIN_TEXTO"
+
+    mensaje = body["error"]["mensaje"]
+
+    assert filename in mensaje
+    assert "no contiene texto extraíble" in mensaje
+    assert "tmp" not in mensaje
 
 def _pdf_sin_texto() -> bytes:
     """PDF de una página en blanco (sin capa de texto) para el caso EmptyPdfTextError."""
@@ -178,3 +206,74 @@ def _pdf_sin_texto() -> bytes:
     output = BytesIO()
     writer.write(output)
     return output.getvalue()
+
+def test_extract_document_endpoint_rejects_empty_file():
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={
+            "file": (
+                "07_archivo_vacio.txt",
+                b"",
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["error"]["codigo"] == "DOCUMENTO_INVALIDO"
+    assert "07_archivo_vacio.txt" in body["error"]["mensaje"]
+    assert "vacío" in body["error"]["mensaje"]
+
+def test_fixture_latin1_devuelve_error_controlado():
+    contenido = (
+        FIXTURES_DIR / "10_texto_latin1.txt"
+    ).read_bytes()
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={"file": ("10_texto_latin1.txt", contenido, "text/plain")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["codigo"] == "DOCUMENTO_INVALIDO"
+
+
+def test_fixture_pdf_escaneado_muestra_nombre_original():
+    contenido = (
+        FIXTURES_DIR / "05_pdf_escaneado_sin_texto.pdf"
+    ).read_bytes()
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={
+            "file": (
+                "05_pdf_escaneado_sin_texto.pdf",
+                contenido,
+                "application/pdf",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["codigo"] == "PDF_SIN_TEXTO"
+    assert "05_pdf_escaneado_sin_texto.pdf" in body["error"]["mensaje"]
+
+
+def test_fixture_archivo_vacio_devuelve_400():
+    contenido = (
+        FIXTURES_DIR / "07_archivo_vacio.txt"
+    ).read_bytes()
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={"file": ("07_archivo_vacio.txt", contenido, "text/plain")},
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["codigo"] == "DOCUMENTO_INVALIDO"
+    assert "vacío" in body["error"]["mensaje"]
