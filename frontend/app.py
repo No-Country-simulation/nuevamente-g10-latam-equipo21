@@ -73,7 +73,7 @@ def run_adaptation(
         raise APIClientError("No se pudo extraer texto del documento.")
 
     payload = {
-        "documento_titulo": title.strip(),
+        "documento_id": extracted.get("documento_id"),
         "documento_contenido": content,
         **options,
     }

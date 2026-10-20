@@ -62,7 +62,7 @@ class InputSchema(PublicSchema):
         description="Sector o nicho al que pertenece el contenido",
     )
 
-    nivel_detalle: Optional[NivelDetalle] = Field(
-        default=None,
+    nivel_detalle: NivelDetalle = Field(
+        ...,
         description="Nivel de profundidad requerido para el contenido adaptado",
-    )
+    )   

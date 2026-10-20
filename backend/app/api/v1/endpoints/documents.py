@@ -8,6 +8,7 @@ from typing import Annotated, Callable
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 
+from app.core.errors import OCIAuthenticationError
 from app.services.document_ingestion import (
     DocumentExtractionError,
     extract_document,
@@ -68,6 +69,8 @@ async def extract_document_endpoint(
         try:
             objeto_id = await run_in_threadpool(persist_original)
             status_upload = "completado"
+        except OCIAuthenticationError:
+            raise
         except Exception as error:
             status_upload = "error"
             logger.warning(
