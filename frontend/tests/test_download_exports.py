@@ -1,6 +1,7 @@
 """Tests de las exportaciones del paquete educativo (NM-D5)."""
 
 from components.download_exports import (
+    _pdf_texto,
     anki_disponible,
     construir_anki_csv,
     construir_markdown,
@@ -91,12 +92,13 @@ def test_anki_solo_disponible_para_flashcards():
     assert construir_anki_csv(RESULTADO_TUTORIAL) is None
 
 
-def test_anki_csv_tiene_columnas_frente_y_dorso():
+def test_anki_csv_tiene_encabezado_compatible_y_columnas():
     contenido_csv = construir_anki_csv(RESULTADO_FLASHCARDS)
     lineas = contenido_csv.splitlines()
 
-    assert lineas[0] == "frente,dorso"
-    assert lineas[1] == "¿Qué es una VCN?,Una red privada"
+    assert lineas[0] == "#separator:comma"
+    assert lineas[1] == "#columns:frente,dorso"
+    assert lineas[2] == "¿Qué es una VCN?,Una red privada"
 
 
 def test_pdf_es_un_pdf_valido_y_paginable():
@@ -111,6 +113,35 @@ def test_pdf_de_tutorial_genera_bytes():
 
     assert datos.startswith(b"%PDF")
     assert len(datos) > 0
+
+
+def _resultado_con_items(cantidad: int) -> dict:
+    return {
+        **RESULTADO_FLASHCARDS,
+        "contenido_adaptado": {
+            **RESULTADO_FLASHCARDS["contenido_adaptado"],
+            "items": [
+                {
+                    "frente": f"Pregunta {numero} " + "texto " * 12,
+                    "dorso": "Respuesta " + "detalle " * 12,
+                    "pista_didactica": "Pista",
+                }
+                for numero in range(1, cantidad + 1)
+            ],
+        },
+    }
+
+
+def test_pdf_genera_varias_paginas_con_muchos_items():
+    import re
+
+    datos = construir_pdf(_resultado_con_items(80))
+
+    assert len(re.findall(rb"/Type\s*/Page\b", datos)) >= 2
+
+
+def test_pdf_texto_normaliza_tipografia_no_latin1():
+    assert _pdf_texto("→ – ≥ • …") == "-> - >= - ..."
 
 
 def test_nombre_base_usa_tema_perfil_formato():

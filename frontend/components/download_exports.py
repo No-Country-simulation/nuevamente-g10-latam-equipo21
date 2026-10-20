@@ -136,23 +136,48 @@ def anki_disponible(resultado: dict) -> bool:
 
 
 def construir_anki_csv(resultado: dict) -> str | None:
-    """CSV importable en Anki (columnas frente y dorso). None si no es Flashcards."""
+    """CSV importable en Anki (columnas frente y dorso). None si no es Flashcards.
+
+    Usa el encabezado de importación de Anki para que las líneas iniciales no se
+    interpreten como tarjetas.
+    """
     if not anki_disponible(resultado):
         return None
-    salida = io.StringIO()
-    escritor = csv.writer(salida)
-    escritor.writerow(["frente", "dorso"])
+    filas = io.StringIO()
+    escritor = csv.writer(filas, lineterminator="\n")
     for item in _contenido(resultado).get("items", []):
         escritor.writerow([item.get("frente", ""), item.get("dorso", "")])
-    return salida.getvalue()
+    return "#separator:comma\n#columns:frente,dorso\n" + filas.getvalue()
 
 
 # --- PDF --------------------------------------------------------------------
 
 
+_REEMPLAZOS_LATIN1 = str.maketrans(
+    {
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2022": "-",
+        "\u2026": "...",
+        "\u2192": "->",
+        "\u2265": ">=",
+        "\u2264": "<=",
+    }
+)
+
+
 def _pdf_texto(texto: str) -> str:
-    """Las fuentes core de fpdf2 usan latin-1: reemplaza lo no representable."""
-    return str(texto).encode("latin-1", "replace").decode("latin-1")
+    """Normaliza tipografía común y reemplaza lo que no entra en latin-1."""
+    return (
+        str(texto)
+        .translate(_REEMPLAZOS_LATIN1)
+        .encode("latin-1", "replace")
+        .decode("latin-1")
+    )
 
 
 def _parrafo(
