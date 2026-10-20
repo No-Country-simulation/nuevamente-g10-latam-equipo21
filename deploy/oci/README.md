@@ -138,6 +138,8 @@ sudo bash -c '
     | base64 --decode >> /etc/docker-platform/apps/nuevamente/runtime.env
   printf "\nGEMINI_MODEL_NAME=gemini-3.1-flash-lite\n" \
     >> /etc/docker-platform/apps/nuevamente/runtime.env
+  printf "GEMINI_FALLBACK_MODEL_NAME=\n" \
+    >> /etc/docker-platform/apps/nuevamente/runtime.env
   printf "GEMINI_EMBEDDING_MODEL_NAME=gemini-embedding-001\n" \
     >> /etc/docker-platform/apps/nuevamente/runtime.env
   printf "GEMINI_TIMEOUT_SECONDS=60\n" \
@@ -168,9 +170,19 @@ consultado el 12 de octubre de 2026, continúa disponible y su fecha más tempra
 de retirada es el 7 de mayo de 2027. La actualización se evaluará por separado
 mediante pruebas de calidad, fidelidad, tiempos de respuesta y cuotas.
 
+`GEMINI_FALLBACK_MODEL_NAME` es opcional y el archivo de ejemplo la deja vacía.
+Se propone `gemini-3.5-flash-lite` como modelo de respaldo, pero antes de
+activarlo en la VM se debe verificar su disponibilidad con la cuenta del
+proyecto y probar los esquemas de salida. Si la variable queda vacía o no se
+define, solo se usa el modelo principal. Al
+configurarlo en un `runtime.env` existente, editar ese archivo sin recrearlo
+ni imprimir su contenido para conservar el resto de la configuración y el secreto.
+
 Se mantiene el timeout de 60 segundos utilizado en la validación del despliegue.
 Su suficiencia para documentos largos queda pendiente de pruebas: una llamada
-al proveedor puede exceder ese límite y hacer fallar la generación.
+al proveedor puede exceder ese límite y hacer fallar la generación. El respaldo
+se intenta después de los reintentos del principal; hay que comprobar también
+el tiempo total de la petición antes de usarlo en la demo.
 
 El backend exige `GEMINI_API_KEY` y `OCI_NAMESPACE` no vacíos cuando se usa el pipeline
 real. Compose fija `USE_MOCK_LLM=false` y `OCI_AUTH_MODE=instance_principal`;
