@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     # Configuración de Google Gemini
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL_NAME: str = "gemini-3.8-flash"
+    GEMINI_FALLBACK_MODEL_NAME: str = ""
     GEMINI_EMBEDDING_MODEL_NAME: str = "gemini-embedding-001"
     GEMINI_TIMEOUT_SECONDS: float = 30.0
 

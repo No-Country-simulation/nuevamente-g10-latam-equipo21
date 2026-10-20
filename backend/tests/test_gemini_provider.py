@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from google.genai.errors import APIError
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel
@@ -26,6 +27,8 @@ class _ChatModelFalso:
     def __init__(self, *, contenido: str | None = None, excepcion: BaseException | None = None):
         self._contenido = contenido
         self._excepcion = excepcion
+        self.invocaciones = 0
+        self.mensajes_recibidos = None
 
         self.schema_recibido: type[BaseModel] | None = None
         self.metodo_recibido: str | None = None
@@ -39,7 +42,9 @@ class _ChatModelFalso:
         self.schema_recibido = schema
         self.metodo_recibido = method
 
-        def _invocar(_messages):
+        def _invocar(messages):
+            self.invocaciones += 1
+            self.mensajes_recibidos = messages
             if self._excepcion is not None:
                 raise self._excepcion
             assert self._contenido is not None
@@ -60,6 +65,27 @@ def _crear_provider(monkeypatch: pytest.MonkeyPatch, chat_model_falso: _ChatMode
         lambda **_kwargs: chat_model_falso,
     )
     return GeminiProvider(model="gemini-3.8-flash", api_key="fake-key-no-real", timeout=1.0)
+
+
+def _crear_provider_con_respaldo(
+    monkeypatch: pytest.MonkeyPatch,
+    principal: _ChatModelFalso,
+    respaldo: _ChatModelFalso,
+) -> GeminiProvider:
+    modelos = {"modelo-principal": principal, "modelo-respaldo": respaldo}
+    monkeypatch.setattr(
+        gemini_provider_module,
+        "ChatGoogleGenerativeAI",
+        lambda **kwargs: modelos[kwargs["model"]],
+    )
+    return GeminiProvider(
+        model="modelo-principal", fallback_model="modelo-respaldo",
+        api_key="fake-key-no-real", timeout=1.0,
+    )
+
+
+def _error_api(code: int, status: str) -> APIError:
+    return APIError(code, {"error": {"status": status, "message": "fallo simulado"}})
 
 
 def test_generate_structured_devuelve_el_modelo_validado(monkeypatch):
@@ -132,3 +158,109 @@ def test_no_depende_de_una_gemini_api_key_real(monkeypatch):
     assert provider.generate_structured(
         [HumanMessage(content="hola")], _RespuestaVacia
     ) == _RespuestaVacia()
+
+
+@pytest.mark.parametrize(
+    ("code", "status"),
+    [(429, "RESOURCE_EXHAUSTED"), (503, "UNAVAILABLE")],
+)
+def test_usa_respaldo_solo_ante_cuota_o_indisponibilidad(
+    monkeypatch, caplog, code, status,
+):
+    principal = _ChatModelFalso(excepcion=_error_api(code, status))
+    respaldo = _ChatModelFalso(contenido='{"titulo": "Índices", "items": []}')
+    provider = _crear_provider_con_respaldo(monkeypatch, principal, respaldo)
+    mensajes = [HumanMessage(content="pedido de prueba")]
+
+    resultado = provider.generate_structured(mensajes, _RespuestaPrueba)
+
+    assert resultado == _RespuestaPrueba(titulo="Índices", items=[])
+    assert principal.invocaciones == respaldo.invocaciones == 1
+    assert principal.mensajes_recibidos == respaldo.mensajes_recibidos == mensajes
+    assert respaldo.schema_recibido is _RespuestaPrueba
+    assert f"motivo={code}/{status}" in caplog.text
+    assert "modelo-respaldo" in caplog.text
+    assert "pedido de prueba" not in caplog.text
+
+
+def test_no_usa_respaldo_si_el_principal_responde(monkeypatch):
+    principal = _ChatModelFalso(contenido='{"titulo": "Índices", "items": []}')
+    respaldo = _ChatModelFalso(contenido='{"titulo": "Otro", "items": []}')
+    provider = _crear_provider_con_respaldo(monkeypatch, principal, respaldo)
+
+    resultado = provider.generate_structured(
+        [HumanMessage(content="hola")], _RespuestaPrueba
+    )
+
+    assert resultado.titulo == "Índices"
+    assert principal.invocaciones == 1
+    assert respaldo.invocaciones == 0
+
+
+def test_si_fallan_ambos_modelos_mantiene_error_del_proveedor(monkeypatch):
+    principal = _ChatModelFalso(excepcion=_error_api(429, "RESOURCE_EXHAUSTED"))
+    respaldo = _ChatModelFalso(excepcion=_error_api(503, "UNAVAILABLE"))
+    provider = _crear_provider_con_respaldo(monkeypatch, principal, respaldo)
+
+    with pytest.raises(LLMProviderError):
+        provider.generate_structured([HumanMessage(content="hola")], _RespuestaPrueba)
+
+    assert principal.invocaciones == respaldo.invocaciones == 1
+
+
+@pytest.mark.parametrize(
+    "excepcion",
+    [_error_api(401, "UNAUTHENTICATED"), TimeoutError("timeout")],
+)
+def test_otros_errores_no_activan_respaldo(monkeypatch, excepcion):
+    principal = _ChatModelFalso(excepcion=excepcion)
+    respaldo = _ChatModelFalso(contenido='{"titulo": "Índices", "items": []}')
+    provider = _crear_provider_con_respaldo(monkeypatch, principal, respaldo)
+
+    with pytest.raises(LLMProviderError):
+        provider.generate_structured([HumanMessage(content="hola")], _RespuestaPrueba)
+
+    assert principal.invocaciones == 1
+    assert respaldo.invocaciones == 0
+
+
+def test_respuesta_fuera_de_esquema_no_activa_respaldo(monkeypatch):
+    principal = _ChatModelFalso(contenido="esto no es JSON")
+    respaldo = _ChatModelFalso(contenido='{"titulo": "Índices", "items": []}')
+    provider = _crear_provider_con_respaldo(monkeypatch, principal, respaldo)
+
+    with pytest.raises(LLMProviderError):
+        provider.generate_structured([HumanMessage(content="hola")], _RespuestaPrueba)
+
+    assert principal.invocaciones == 1
+    assert respaldo.invocaciones == 0
+
+
+def test_sin_respaldo_configurado_no_crea_otro_modelo(monkeypatch):
+    modelos_creados = []
+
+    def _fabrica(**kwargs):
+        modelos_creados.append(kwargs["model"])
+        return _ChatModelFalso(excepcion=_error_api(503, "UNAVAILABLE"))
+
+    monkeypatch.setattr(gemini_provider_module, "ChatGoogleGenerativeAI", _fabrica)
+    provider = GeminiProvider(
+        model="modelo-principal", fallback_model=" ",
+        api_key="fake-key-no-real", timeout=1.0,
+    )
+
+    with pytest.raises(LLMProviderError):
+        provider.generate_structured([HumanMessage(content="hola")], _RespuestaPrueba)
+
+    assert modelos_creados == ["modelo-principal"]
+
+
+def test_respaldo_debe_ser_distinto_del_principal(monkeypatch):
+    monkeypatch.setattr(
+        gemini_provider_module, "ChatGoogleGenerativeAI", lambda **_kwargs: _ChatModelFalso(),
+    )
+    with pytest.raises(ValueError, match="distinto"):
+        GeminiProvider(
+            model="modelo-principal", fallback_model="modelo-principal",
+            api_key="fake-key-no-real", timeout=1.0,
+        )

@@ -214,6 +214,7 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 |---|---|---|
 | `GEMINI_API_KEY` | `tu_api_key_aqui` | Credencial de Gemini; obligatoria para el pipeline real. |
 | `GEMINI_MODEL_NAME` | `gemini-3.8-flash` | Modelo generativo. |
+| `GEMINI_FALLBACK_MODEL_NAME` | vacío | Modelo de respaldo opcional ante cuota (429) o indisponibilidad (503); debe ser distinto del principal. |
 | `GEMINI_EMBEDDING_MODEL_NAME` | `gemini-embedding-001` | Modelo de embeddings. |
 | `GEMINI_TIMEOUT_SECONDS` | `30` | Tiempo máximo por llamada al proveedor. |
 | `CHROMA_PERSIST_DIRECTORY` | `./chroma_db` | Directorio local de ChromaDB. |
@@ -222,6 +223,11 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 | `RETRIEVAL_MAX_CONTEXT_TOKENS` | `2000` | Límite del contexto ensamblado. |
 | `FIDELITY_SCORE_THRESHOLD` | `0.7` | Umbral de fidelidad contra la fuente. |
 | `MULTI_AGENT_MAX_ITERATIONS` | `3` | Máximo de iteraciones Redactor-Crítico del flujo multi-agente. |
+
+Si se configura un modelo de respaldo, `GeminiProvider` lo utiliza solo cuando el
+principal falla por cuota o indisponibilidad. Los demás errores mantienen el
+comportamiento anterior. Si ambos modelos fallan, la API conserva el error
+`LLM_NO_DISPONIBLE`; el modelo utilizado y el motivo del cambio quedan solo en logs.
 
 ### OCI Object Storage
 
