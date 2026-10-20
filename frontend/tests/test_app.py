@@ -262,8 +262,13 @@ def test_quiz_retry_resets_answers_without_calling_backend(monkeypatch):
 	assert len(calls) == 2
 	app.radio[0].set_value("Correcta")
 	app.run()
-	assert any(button.label == "Reintentar" for button in app.button)
+	assert not any(button.label == "Reintentar" for button in app.button)
+	assert len(app.error) == 0
 
+	next(button for button in app.button if button.label == "Confirmar respuesta").click()
+	app.run()
+
+	assert any(button.label == "Reintentar" for button in app.button)
 	next(button for button in app.button if button.label == "Reintentar").click()
 	app.run()
 

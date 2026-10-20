@@ -27,9 +27,11 @@ def render_quiz(items: list[dict]) -> None:
     if st.session_state.get("quiz_signature") != quiz_signature:
         st.session_state["quiz_signature"] = quiz_signature
         st.session_state["quiz_answers"] = {}
+        st.session_state["quiz_confirmed_answers"] = {}
         st.session_state["quiz_attempt"] = 0
 
     answers = st.session_state.setdefault("quiz_answers", {})
+    confirmed_answers = st.session_state.setdefault("quiz_confirmed_answers", {})
     attempt = st.session_state.setdefault("quiz_attempt", 0)
 
     for number, item in enumerate(items, 1):
@@ -39,20 +41,28 @@ def render_quiz(items: list[dict]) -> None:
 
             options = item["opciones"]
             answer_key = f"quiz_answer_{quiz_signature}_{attempt}_{number}"
-            previous_answer = answers.get(str(number))
+            confirm_key = f"quiz_confirm_{quiz_signature}_{attempt}_{number}"
+            question_number = str(number)
+            confirmed_choice = confirmed_answers.get(question_number)
+            current_choice = answers.get(question_number, confirmed_choice)
             selected_index = (
-                options.index(previous_answer) if previous_answer in options else None
+                options.index(current_choice) if current_choice in options else None
             )
+
+            is_locked = question_number in confirmed_answers
             selected_option = st.radio(
                 "Selecciona una opción",
                 options,
                 index=selected_index,
                 key=answer_key,
+                disabled=is_locked,
             )
 
-            if selected_option is not None:
-                answers[str(number)] = selected_option
-                if selected_option == item["respuesta_correcta"]:
+            if not is_locked and selected_option is not None:
+                answers[question_number] = selected_option
+
+            if is_locked and confirmed_choice is not None:
+                if confirmed_choice == item["respuesta_correcta"]:
                     st.success("¡Correcto!")
                 else:
                     st.error(
@@ -60,9 +70,15 @@ def render_quiz(items: list[dict]) -> None:
                     )
                 st.info(f"Justificación: {item['justificacion']}")
 
-    if items and len(answers) == len(items):
+            if not is_locked and question_number in answers:
+                if st.button("Confirmar respuesta", key=confirm_key):
+                    confirmed_answers[question_number] = answers[question_number]
+                    answers.pop(question_number, None)
+                    st.rerun()
+
+    if items and len(confirmed_answers) == len(items):
         correct_answers = sum(
-            answers[str(number)] == item["respuesta_correcta"]
+            confirmed_answers[str(number)] == item["respuesta_correcta"]
             for number, item in enumerate(items, 1)
         )
         score = round(correct_answers / len(items) * 100)
@@ -72,6 +88,7 @@ def render_quiz(items: list[dict]) -> None:
 
         if st.button("Reintentar", key=f"quiz_retry_{quiz_signature}"):
             answers.clear()
+            confirmed_answers.clear()
             st.session_state["quiz_attempt"] = attempt + 1
             st.rerun()
 

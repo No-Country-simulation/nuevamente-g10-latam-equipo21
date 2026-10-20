@@ -32,4 +32,5 @@ init_session_state()
     assert app.session_state["source_filename"] is None
     assert app.session_state["quiz_signature"] is None
     assert app.session_state["quiz_answers"] == {}
+    assert app.session_state["quiz_confirmed_answers"] == {}
     assert app.session_state["quiz_attempt"] == 0

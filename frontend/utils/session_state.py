@@ -13,6 +13,7 @@ def init_session_state() -> None:
         "source_filename": None,
         "quiz_signature": None,
         "quiz_answers": {},
+        "quiz_confirmed_answers": {},
         "quiz_attempt": 0,
     }
     for key, value in defaults.items():

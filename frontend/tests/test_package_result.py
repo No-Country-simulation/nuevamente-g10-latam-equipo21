@@ -136,7 +136,7 @@ def test_each_format_renders_content_and_common_header(
     assert len(app.json) == 0
 
 
-def test_quiz_shows_feedback_and_justification_after_answering():
+def test_quiz_shows_feedback_only_after_confirming_and_locks_answer():
     _, item, _ = FORMAT_CASES[1]
     app = render_result(make_result("Quiz", item))
 
@@ -149,8 +149,18 @@ def test_quiz_shows_feedback_and_justification_after_answering():
     app.run()
 
     assert not app.exception
+    assert len(app.error) == 0
+    assert len(app.info) == 0
+    assert any(button.label == "Confirmar respuesta" for button in app.button)
+
+    next(button for button in app.button if button.label == "Confirmar respuesta").click()
+    app.run()
+
+    assert not app.exception
     assert any("Incorrecto" in message.value for message in app.error)
     assert any("Permite controlar el tráfico." in message.value for message in app.info)
+    assert app.radio[0].disabled
+    assert any(button.label == "Reintentar" for button in app.button)
 
 
 def test_quiz_score_and_retry_reset_answers():
@@ -183,7 +193,12 @@ render_package_result({result!r})
     assert not app.exception
     app.radio[0].set_value("Editar imágenes")
     app.run()
+    next(button for button in app.button if button.label == "Confirmar respuesta").click()
+    app.run()
+
     app.radio[1].set_value("Security Lists")
+    app.run()
+    next(button for button in app.button if button.label == "Confirmar respuesta").click()
     app.run()
 
     assert not app.exception
@@ -202,6 +217,54 @@ render_package_result({result!r})
     assert [radio.value for radio in app.radio] == [None, None]
     assert "Puntaje final" not in {metric.label for metric in app.metric}
     assert app.session_state["quiz_answers"] == {}
+    assert app.session_state["quiz_confirmed_answers"] == {}
+
+
+def test_loading_a_different_quiz_clears_previous_answers():
+    first_result = make_result(
+        "Quiz",
+        {
+            "pregunta": "Pregunta anterior",
+            "opciones": ["Respuesta anterior", "Otra"],
+            "respuesta_correcta": "Respuesta anterior",
+            "justificacion": "Justificación anterior.",
+        },
+    )
+    second_result = make_result(
+        "Quiz",
+        {
+            "pregunta": "Pregunta nueva",
+            "opciones": ["Respuesta nueva", "Otra"],
+            "respuesta_correcta": "Respuesta nueva",
+            "justificacion": "Justificación nueva.",
+        },
+    )
+    app = AppTest.from_string(
+        f"""
+import sys
+sys.path.insert(0, {str(FRONTEND_DIR)!r})
+import streamlit as st
+from components.package_result import render_package_result
+st.session_state["quiz_result"] = {first_result!r}
+if st.button("Cargar otro cuestionario"):
+    st.session_state["quiz_result"] = {second_result!r}
+render_package_result(st.session_state["quiz_result"])
+""",
+        default_timeout=10,
+    ).run()
+
+    app.radio[0].set_value("Otra")
+    app.run()
+    assert app.session_state["quiz_answers"] == {"1": "Otra"}
+
+    app.button[0].click()
+    app.run()
+
+    assert not app.exception
+    assert app.radio[0].value is None
+    assert app.session_state["quiz_answers"] == {}
+    assert app.session_state["quiz_confirmed_answers"] == {}
+    assert not any("Justificación anterior." in message.value for message in app.info)
 
 
 def test_completed_upload_shows_confirmation_bucket_and_object():
