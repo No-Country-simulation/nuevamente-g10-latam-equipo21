@@ -11,6 +11,7 @@ from app.schemas.content import (
 )
 from app.schemas.enums import FormatoSalida, PerfilDestinatario
 
+
 ContenidoItem = Union[
     TutorialItem,
     FlashcardItem,
@@ -22,11 +23,14 @@ ContenidoItem = Union[
 
 class MetadatosSchema(PublicSchema):
     perfil_aplicado: PerfilDestinatario
+
     formato_generado: FormatoSalida
+
     tiempo_estimado_estudio_minutos: StrictInt = Field(
         ...,
         ge=0,
     )
+
     conceptos_clave: list[StrictStr] = Field(
         ...,
         min_length=1,
@@ -39,10 +43,12 @@ class ContenidoAdaptadoSchema(PublicSchema):
         ...,
         min_length=1,
     )
+
     introduccion_contextualizada: StrictStr = Field(
         ...,
         min_length=1,
     )
+
     items: list[ContenidoItem] = Field(
         ...,
         min_length=1,
@@ -55,7 +61,9 @@ class EvaluacionCalidadSchema(PublicSchema):
         ge=0,
         le=1,
     )
+
     claridad_pedagogica: Literal["Alta", "Media", "Baja"]
+
     observaciones: StrictStr
 
 
@@ -68,18 +76,24 @@ class AlmacenamientoOCISchema(PublicSchema):
         ...,
         min_length=1,
     )
+
     objeto_id: StrictStr = Field(
         ...,
         min_length=1,
     )
+
     status_upload: Literal["completado", "fallido", "error"]
 
 
 class OutputSchema(PublicSchema):
     status: Literal["exito", "error"]
+
     metadatos: MetadatosSchema
+
     contenido_adaptado: ContenidoAdaptadoSchema
+
     evaluacion_calidad: EvaluacionCalidadSchema
+
     almacenamiento_oci: AlmacenamientoOCISchema
 
     @model_validator(mode="after")
@@ -108,8 +122,17 @@ class ErrorSchema(PublicSchema):
         min_length=1,
         description="Código identificador del error",
     )
+
     mensaje: StrictStr = Field(
         ...,
         min_length=1,
         description="Descripción del error",
     )
+
+
+class ErrorResponseSchema(PublicSchema):
+    """Sobre público de error: {"status": "error", "error": {codigo, mensaje}} (NM-21)."""
+
+    status: Literal["error"] = "error"
+
+    error: ErrorSchema

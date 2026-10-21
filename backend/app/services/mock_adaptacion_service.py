@@ -51,12 +51,18 @@ BUCKET_MOCK = settings.OCI_BUCKET_NAME
 OBJETO_ID_MOCK = "mock-no-persistido"
 
 
-def _base_metadatos(payload: InputSchema, minutos: int, conceptos: list[str]) -> MetadatosSchema:
+def _base_metadatos(
+    payload: InputSchema,
+    minutos: int,
+    conceptos: list[str],
+    prerrequisitos: list[str] | None = None,
+) -> MetadatosSchema:
     return MetadatosSchema(
         perfil_aplicado=payload.perfil_destinatario,
         formato_generado=payload.formato_salida,
         tiempo_estimado_estudio_minutos=minutos,
         conceptos_clave=conceptos,
+        prerrequisitos=prerrequisitos or [],
     )
 
 
@@ -148,7 +154,12 @@ def _mock_tutorial(payload: InputSchema) -> OutputSchema:
     ]
     return OutputSchema(
         status="exito",
-        metadatos=_base_metadatos(payload, minutos=15, conceptos=["VCN", "Subredes", "CIDR"]),
+        metadatos=_base_metadatos(
+            payload,
+            minutos=15,
+            conceptos=["VCN", "Subredes", "CIDR"],
+            prerrequisitos=["Direccionamiento IP", "Nociones básicas de redes"],
+        ),
         contenido_adaptado=ContenidoAdaptadoSchema(
             titulo=f"Tutorial paso a paso: {payload.documento_titulo}",
             introduccion_contextualizada="Guía práctica orientada a nicho técnico (MOCK).",

@@ -177,6 +177,7 @@ def test_flag_mock_y_501_sin_cablear(monkeypatch):
     r = c.post(URL, json=PAYLOAD)
     assert r.status_code == 200 and "MOCK" in r.json()["evaluacion_calidad"]["observaciones"]
     monkeypatch.setattr(settings, "USE_MOCK_LLM", False)
+    monkeypatch.setattr(settings, "USE_MULTIAGENT", False)
     from app.services.mock_adaptacion_service import construir_respuesta_mock
 
     llamados = []
@@ -264,3 +265,22 @@ def test_verificador_pasa_doc_id_y_vector_store_compartidos():
     assert visto["documento_id"] == documento_id_desde_contenido(p.documento_contenido)
     assert visto["vector_store"] == "vs" and visto["llm_provider"] == "LLM"
     assert visto["contenido_adaptado"] == "CONTENIDO" and visto["perfil_destinatario"] == "Principiante"
+
+
+# --- NM-21: contenido insuficiente -> 422 (no 502) ---
+def test_contenido_insuficiente_para_metadatos_devuelve_422():
+    from app.services.adaptacion_adapters import MetadatosRealAdapter
+    from app.services.metadata_service import MetadatosInsuficientesError
+
+    def generar_insuficiente(**kwargs):
+        raise MetadatosInsuficientesError("sin conceptos verificables")
+
+    metadatos = MetadatosRealAdapter(llm_provider="LLM", generar=generar_insuficiente)
+    c, _ = make_client(metadatos=metadatos)
+
+    r = c.post(URL, json=PAYLOAD)
+
+    assert r.status_code == 422
+    body = r.json()
+    assert body["status"] == "error"
+    assert body["error"]["codigo"] == "CONTENIDO_INSUFICIENTE"

@@ -257,13 +257,19 @@ class MetadatosRealAdapter:
             self._generar = generar_metadatos_aprendizaje
         if self._llm is None:
             self._llm = _llm_provider_compartido()
-        return self._generar(
-            documento_contenido=payload.documento_contenido,
-            contenido_adaptado=contenido,
-            perfil_destinatario=payload.perfil_destinatario,
-            formato_salida=payload.formato_salida,
-            llm_provider=self._llm,
-        )
+        from app.core.errors import ContenidoInsuficienteError
+        from app.services.metadata_service import MetadatosInsuficientesError
+        try:
+            return self._generar(
+                documento_contenido=payload.documento_contenido,
+                contenido_adaptado=contenido,
+                perfil_destinatario=payload.perfil_destinatario,
+                formato_salida=payload.formato_salida,
+                llm_provider=self._llm,
+            )
+        except MetadatosInsuficientesError as error:
+            # NM-21: un documento demasiado corto no es una falla del LLM (502): es 422.
+            raise ContenidoInsuficienteError(str(error)) from error
 
 
 def armar_respuesta_provisional(paquete: dict) -> OutputSchema:
@@ -343,3 +349,27 @@ def construir_servicio_real() -> AdaptacionService:
         logger.warning("Pipeline real no disponible; pasos sin cablear: %s", pendientes)
         raise PipelineNoConfiguradaError()
     return servicio
+
+@lru_cache(maxsize=1)
+def _servicio_multiagente():
+    """NM-28: mismo contexto, metadatos y storage que el flujo lineal, pero
+    generación + fidelidad las resuelve el grafo LangGraph de NM-D1."""
+    from app.services.adaptacion_multiagente_service import AdaptacionMultiAgenteService
+    from app.services.multi_agent_service import crear_grafo_multiagente
+
+    contexto = ContextoRealAdapter()
+    grafo = crear_grafo_multiagente(
+        vector_store=contexto.vector_store,
+        llm_provider=_llm_provider_compartido(),
+    )
+    return AdaptacionMultiAgenteService(
+        contexto=contexto,
+        metadatos=MetadatosRealAdapter(),
+        storage=StorageOCIAdapter(),
+        grafo=grafo,
+    )
+
+
+def construir_servicio_multiagente():
+    """Servicio con el grafo multi-agente (USE_MULTIAGENT=true)."""
+    return _servicio_multiagente()

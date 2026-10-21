@@ -5,19 +5,25 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Callable
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
+from app.core.errors import (
+    DocumentoInvalidoError,
+    DocumentoNoSoportadoError,
+    DocumentoSinTextoError,
+    OCIAuthenticationError,
+)
 
-from app.core.errors import OCIAuthenticationError
 from app.services.document_ingestion import (
     DocumentExtractionError,
+    EmptyPdfTextError,
+    UnsupportedDocumentFormatError,
     extract_document,
 )
 from app.services.oci_storage_service import (
     OCIStorageService,
     get_oci_storage_service_factory,
 )
-
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -39,7 +45,6 @@ async def extract_document_endpoint(
     suffix = Path(file.filename or "").suffix
     temporary_path = None
 
-    # Generamos un identificador único para el documento
     documento_id = str(uuid.uuid4())
 
     try:
@@ -63,7 +68,6 @@ async def extract_document_endpoint(
                 content=content,
                 content_type=file.content_type,
             )
-            # Extrae la propiedad string si 'res' es una instancia del esquema
             return getattr(res, "objeto_id", res)
 
         try:
@@ -83,15 +87,16 @@ async def extract_document_endpoint(
             "objeto_id": objeto_id or metadata.filename,
             "status_upload": status_upload,
             "text": document.text,
-            "pages": [asdict(p) for p in getattr(document, "pages", [])],  # <--- Agregado para cumplir NM-23
+            "pages": [asdict(p) for p in getattr(document, "pages", [])],
             "metadata": asdict(metadata),
         }
 
+    except UnsupportedDocumentFormatError as error:
+        raise DocumentoNoSoportadoError(str(error)) from error
+    except EmptyPdfTextError as error:
+        raise DocumentoSinTextoError(str(error)) from error
     except DocumentExtractionError as error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(error),
-        ) from error
+        raise DocumentoInvalidoError(str(error)) from error
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
