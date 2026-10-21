@@ -16,6 +16,7 @@ from services.api_client import (
     extract_document,
 )
 from components.download_json import render_json_download
+from components.download_exports import render_export_buttons
 from utils.session_state import init_session_state
 
 
@@ -220,6 +221,11 @@ if result and result.get("status") == "exito":
     with st.container():
         render_package_result(result)
         render_json_download(
+            result,
+            titulo_documento=st.session_state.get("document_title"),
+            archivo_origen=st.session_state.get("source_filename"),
+        )
+        render_export_buttons(
             result,
             titulo_documento=st.session_state.get("document_title"),
             archivo_origen=st.session_state.get("source_filename"),

@@ -342,3 +342,93 @@ def test_footer_shows_connected_when_api_returns_validation_error(monkeypatch):
     assert "http://" not in footer
     assert "API conectada" in footer
     assert "Sin conexión" not in footer
+
+
+# --- NM-D5: exportaciones ---
+_RESUMEN_BASE = {
+	"evaluacion_calidad": {
+		"anclaje_fuente_score": 0.9,
+		"claridad_pedagogica": "Alta",
+		"observaciones": "ok",
+	},
+	"almacenamiento_oci": {
+		"bucket": "b",
+		"objeto_id": "o",
+		"status_upload": "completado",
+	},
+}
+
+_RESULTADO_FLASHCARDS = {
+	"status": "exito",
+	"metadatos": {
+		"perfil_aplicado": "Principiante",
+		"formato_generado": "Flashcards",
+		"tiempo_estimado_estudio_minutos": 5,
+		"conceptos_clave": ["VCN"],
+	},
+	"contenido_adaptado": {
+		"titulo": "T",
+		"introduccion_contextualizada": "I",
+		"items": [{"frente": "F", "dorso": "D", "pista_didactica": "P"}],
+	},
+	**_RESUMEN_BASE,
+}
+
+_RESULTADO_TUTORIAL = {
+	"status": "exito",
+	"metadatos": {
+		"perfil_aplicado": "Principiante",
+		"formato_generado": "Tutorial",
+		"tiempo_estimado_estudio_minutos": 5,
+		"conceptos_clave": ["VCN"],
+	},
+	"contenido_adaptado": {
+		"titulo": "T",
+		"introduccion_contextualizada": "I",
+		"items": [
+			{
+				"paso_numero": 1,
+				"titulo_paso": "Paso",
+				"contenido": "Contenido",
+				"codigo_ejemplo": None,
+			}
+		],
+	},
+	**_RESUMEN_BASE,
+}
+
+
+def _generar_con(resultado: dict, monkeypatch):
+	responses = [
+		FakeResponse({"text": "Texto fuente", "metadata": {}, "documento_id": "doc-test-123"}),
+		FakeResponse(resultado),
+	]
+	monkeypatch.setattr(requests, "request", lambda *a, **k: responses.pop(0))
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click()
+	app.run()
+	return app
+
+
+def _boton_anki(app):
+	botones = [b for b in app.download_button if getattr(b, "label", "") == "CSV Anki"]
+	assert len(botones) == 1
+	return botones[0]
+
+
+def test_exportacion_anki_habilitada_para_flashcards(monkeypatch):
+	app = _generar_con(_RESULTADO_FLASHCARDS, monkeypatch)
+
+	assert _boton_anki(app).disabled is False
+
+
+def test_exportacion_anki_deshabilitada_con_explicacion_para_otros_formatos(monkeypatch):
+	app = _generar_con(_RESULTADO_TUTORIAL, monkeypatch)
+
+	assert _boton_anki(app).disabled is True
+	assert any(
+		"solo está disponible para el formato Flashcards" in caption.value
+		for caption in app.caption
+	)
