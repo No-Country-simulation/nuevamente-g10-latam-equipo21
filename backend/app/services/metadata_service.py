@@ -49,6 +49,15 @@ MULTIPLICADOR_POR_FORMATO: dict[FormatoSalida, float] = {
 
 # --- Extracción con LLM ----------------------------------------------------------------------
 MIN_CONCEPTOS = 3
+# NM-33: minimo de conceptos que deben aparecer en algun item. El prompt sigue pidiendo 3 a 8,
+# pero el criterio del ticket es que todo concepto listado este desarrollado, asi que se
+# devuelven los que haya (el schema publico exige min_length=1).
+MIN_CONCEPTOS_EN_ITEMS = 1
+
+_PALABRAS_VACIAS = frozenset(
+    {"de", "del", "la", "el", "los", "las", "y", "e", "en", "a", "un", "una",
+     "para", "por", "con", "the", "of", "and"}
+)
 MAX_CONCEPTOS = 8
 MAX_PREREQUISITOS = 5
 INTENTOS_MAXIMOS = 2
@@ -130,6 +139,21 @@ def _aparece_en_documento(termino_normalizado: str, documento_normalizado: str) 
     return bool(termino_normalizado) and f" {termino_normalizado}" in f" {documento_normalizado}"
 
 
+def _aparece_en_algun_item(termino_normalizado: str, items_normalizados: list[str]) -> bool:
+    """
+    Todas las palabras significativas del termino deben empezar una palabra dentro del texto
+    de UN MISMO item, en cualquier orden ('Internet Gateway' calza con 'gateway de internet').
+    """
+    palabras = termino_normalizado.split()
+    significativas = [p for p in palabras if p not in _PALABRAS_VACIAS] or palabras
+    if not significativas:
+        return False
+    return any(
+        all(f" {p}" in f" {item}" for p in significativas)
+        for item in items_normalizados
+    )
+
+
 # --- Tiempo -----------------------------------------------------------------------------------
 def estimar_tiempo_estudio_minutos(
     contenido_adaptado: ContenidoAdaptadoSchema,
@@ -195,15 +219,16 @@ def generar_metadatos_aprendizaje(
     """
     Devuelve el bloque `metadatos` del contrato.
 
-    Levanta `MetadatosInsuficientesError` si no hay 3 conceptos verificables tras los intentos,
+    Levanta `MetadatosInsuficientesError` si ningún concepto verificable aparece en el documento y en algún ítem tras los intentos,
     y deja pasar `LLMProviderError`/`LLMTimeoutError` del proveedor sin traducir.
     """
     perfil = PerfilDestinatario(perfil_destinatario)
     formato = FormatoSalida(formato_salida)
     documento_normalizado = _normalizar(documento_contenido)
-    items_normalizados = _normalizar(
-        " ".join(_textos([item.model_dump() for item in contenido_adaptado.items]))
-    )
+    items_normalizados = [
+        _normalizar(" ".join(_textos(item.model_dump())))
+        for item in contenido_adaptado.items
+    ]
     mensajes = _construir_mensajes(
         documento_contenido=documento_contenido,
         contenido_adaptado=contenido_adaptado,
@@ -212,16 +237,12 @@ def generar_metadatos_aprendizaje(
 
     for intento in range(1, INTENTOS_MAXIMOS + 1):
         bruto = llm_provider.generate_structured(mensajes, MetadatosLLM)
-        conceptos = _filtrar_conceptos(bruto.conceptos_clave, documento_normalizado)
-        # NM-33: se prefieren los conceptos que algun item trabaja, solo si quedan al
-        # menos MIN_CONCEPTOS. Si no, se conservan los verificados contra el documento.
-        en_items = [
-            c for c in conceptos
-            if _aparece_en_documento(_normalizar(c), items_normalizados)
+        conceptos = [
+            c
+            for c in _filtrar_conceptos(bruto.conceptos_clave, documento_normalizado)
+            if _aparece_en_algun_item(_normalizar(c), items_normalizados)
         ]
-        if len(en_items) >= MIN_CONCEPTOS:
-            conceptos = en_items
-        if len(conceptos) >= MIN_CONCEPTOS:
+        if len(conceptos) >= MIN_CONCEPTOS_EN_ITEMS:
             prerrequisitos = _filtrar_prerrequisitos(bruto.prerrequisitos, documento_normalizado)
             break
         logger.warning(
