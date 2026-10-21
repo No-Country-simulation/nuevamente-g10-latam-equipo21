@@ -155,7 +155,11 @@ if uploaded_file is not None:
     elif uploaded_file.size == 0:
         st.warning("El archivo está vacío. Sube un documento con contenido.")
     else:
-        st.success(f"Documento cargado: {uploaded_file.name}")
+        # Criterio NM-36: Aviso aclarando que la validación real ocurre al generar
+        st.success(
+            f"Documento cargado: {uploaded_file.name} "
+            "(pendiente de validación al generar contenido)"
+        )
 
 with st.form("adaptation_form"):
     default_title = Path(uploaded_file.name).stem if uploaded_file else ""
@@ -180,8 +184,10 @@ if submitted:
     else:
         st.session_state["is_loading"] = True
         try:
+            # Criterio NM-36: Espera informada indicando hasta 2 minutos
             with loading_indicator(
-                "Extrayendo el documento y preparando el material..."
+                "Extrayendo el documento y preparando el material... "
+                "Este proceso puede tomar hasta 2 minutos."
             ):
                 result = run_adaptation(
                     uploaded_file,

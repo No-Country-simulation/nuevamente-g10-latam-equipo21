@@ -12,7 +12,9 @@ def render_error(error: Mapping[str, Any]) -> None:
     if not isinstance(message, str) or not message.strip():
         message = "No se pudo completar la solicitud."
 
+    # Mostramos el mensaje principal en lenguaje claro
+    st.error(message)
+
+    # El código técnico se muestra en letra chica (caption) de forma secundaria
     if isinstance(code, str) and code.strip():
-        st.error(f"{code}: {message}")
-    else:
-        st.error(message)
+        st.caption(f"Código técnico: {code}")
