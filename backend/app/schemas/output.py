@@ -1,5 +1,4 @@
-from typing import Literal, Union
-
+from typing import Literal, Optional, Union
 from pydantic import Field, StrictFloat, StrictInt, StrictStr, model_validator
 
 from app.schemas.base import PublicSchema
@@ -69,6 +68,10 @@ class EvaluacionCalidadSchema(PublicSchema):
 
 
 class AlmacenamientoOCISchema(PublicSchema):
+    documento_id: Optional[StrictStr] = Field(
+        default=None,
+        description="Identificador único del documento original de origen",
+    )
     bucket: StrictStr = Field(
         ...,
         min_length=1,
@@ -79,7 +82,7 @@ class AlmacenamientoOCISchema(PublicSchema):
         min_length=1,
     )
 
-    status_upload: Literal["completado", "error"]
+    status_upload: Literal["completado", "fallido", "error"]
 
 
 class OutputSchema(PublicSchema):
