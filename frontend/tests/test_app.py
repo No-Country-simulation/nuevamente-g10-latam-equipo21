@@ -147,25 +147,29 @@ def test_http_success_with_error_status_shows_only_adaptation_error(monkeypatch)
 
 
 def test_api_error_is_displayed_without_clearing_form_selections(monkeypatch):
-	def fake_request(method, url, **kwargs):
-		return FakeResponse(
-			{"status": "error", "error": {"codigo": "ERROR_TEST", "mensaje": "Servicio no disponible"}},
-			ok=False,
-		)
+    def fake_request(method, url, **kwargs):
+        return FakeResponse(
+           {"status": "error", "error": {"codigo": "ERROR_TEST", "mensaje": "Servicio no disponible"}},
+           ok=False,
+        )
 
-	monkeypatch.setattr(requests, "request", fake_request)
-	app = _app()
-	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
-	app.run()
-	app.button[0].click()
-	app.run()
+    monkeypatch.setattr(requests, "request", fake_request)
+    app = _app()
+    app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+    app.run()
+    app.button[0].click()
+    app.run()
 
-	assert any(
-		"ERROR_TEST: Servicio no disponible" in error.value
-		for error in app.error
-	)
-	assert not app.button[0].disabled
-	assert app.selectbox[0].value == "Principiante"
+    assert any(
+       "Servicio no disponible" in error.value
+       for error in app.error
+    )
+    assert any(
+       "ERROR_TEST" in caption.value
+       for caption in app.caption
+    )
+    assert not app.button[0].disabled
+    assert app.selectbox[0].value == "Principiante"
 
 
 def test_selector_change_preserves_and_renders_last_response(monkeypatch):
