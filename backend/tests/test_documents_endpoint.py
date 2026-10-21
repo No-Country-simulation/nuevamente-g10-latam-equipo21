@@ -298,3 +298,29 @@ def test_archivo_sin_extension_muestra_nombre_original():
     assert "sin_extension" in body["error"]["mensaje"]
     assert "Formatos permitidos" in body["error"]["mensaje"]
     assert "tmp" not in body["error"]["mensaje"]
+
+
+def test_latin1_muestra_nombre_original_del_archivo():
+    filename = "10_texto_latin1.txt"
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={
+            "file": (
+                filename,
+                "Información técnica en español".encode("latin-1"),
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["error"]["codigo"] == "DOCUMENTO_INVALIDO"
+
+    mensaje = body["error"]["mensaje"]
+    assert filename in mensaje
+    assert "UTF-8" in mensaje
+    assert ".tmp" not in mensaje

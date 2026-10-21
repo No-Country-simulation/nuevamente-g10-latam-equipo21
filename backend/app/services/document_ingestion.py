@@ -72,7 +72,7 @@ def extract_document(
         page_count = len(raw_pages)
         pages = _build_pages(raw_pages)
     else:
-        text = _read_text(path)
+        text = _read_text(path, display_name)
         page_count = None
         pages = ()
 
@@ -119,13 +119,13 @@ def _build_pages(raw_pages: list[str]) -> tuple[DocumentPage, ...]:
     return tuple(paginas)
 
 
-def _read_text(path: Path) -> str:
+def _read_text(path: Path, display_name: str) -> str:
     try:
         with path.open(encoding="utf-8-sig", newline="") as file:
             return file.read()
     except UnicodeDecodeError as error:
         raise DocumentExtractionError(
-            "No se pudo leer el archivo de texto. "
+            f"No se pudo leer el archivo '{display_name}'. "
             "La codificación debe ser UTF-8."
         ) from error
 
