@@ -67,6 +67,11 @@ def extract_document(
             f"Formatos permitidos: {supported}."
         )
 
+    if path.stat().st_size == 0:
+        raise DocumentExtractionError(
+            f"El archivo '{display_name}' está vacío o no contiene texto válido."
+        )
+
     if document_format == "pdf":
         text, raw_pages = _extract_pdf(path, display_name)
         page_count = len(raw_pages)

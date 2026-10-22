@@ -324,3 +324,25 @@ def test_latin1_muestra_nombre_original_del_archivo():
     assert filename in mensaje
     assert "UTF-8" in mensaje
     assert ".tmp" not in mensaje
+
+
+def test_extract_document_endpoint_rejects_zero_byte_pdf():
+    """Un PDF de cero bytes debe devolver 400, nunca 500."""
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={
+            "file": (
+                "documento_vacio.pdf",
+                b"",
+                "application/pdf",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["error"]["codigo"] == "DOCUMENTO_INVALIDO"
+    assert "documento_vacio.pdf" in body["error"]["mensaje"]
+    assert "vacío" in body["error"]["mensaje"]
