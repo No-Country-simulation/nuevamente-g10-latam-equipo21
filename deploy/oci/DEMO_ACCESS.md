@@ -14,6 +14,13 @@ repositorio ni en comentarios del PR.
 conserva una sesión anterior, se puede cerrar en `/salir` o abrir una ventana privada.
 La sesión dura hasta 12 horas y se invalida al cambiar la contraseña.
 
+### Cerrar sesión desde la app
+
+La app muestra el enlace **Cerrar sesión** en la barra lateral. Se configura con la
+variable `LOGOUT_URL` del frontend: en el deploy apunta a `/salir` y, si queda vacía
+(por ejemplo en local, sin el servicio de acceso), el enlace no se muestra. Al hacer
+clic, el servicio de acceso borra la cookie de sesión y redirige a `/acceso`.
+
 ## Configuración
 
 - Cloudflare: registro A `nuevamente` hacia la VM y CNAME `www.nuevamente` hacia
