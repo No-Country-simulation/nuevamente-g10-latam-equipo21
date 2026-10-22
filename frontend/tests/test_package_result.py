@@ -220,6 +220,32 @@ render_package_result({result!r})
     assert app.session_state["quiz_confirmed_answers"] == {}
 
 
+def test_quiz_accepts_correct_answer_as_letter_with_prefixed_options():
+    item = {
+        "pregunta": "¿Cuál es la opción correcta?",
+        "opciones": ["A) Primera opción", "B) Segunda opción"],
+        "respuesta_correcta": "B",
+        "justificacion": "La segunda opción es la correcta.",
+    }
+    app = render_result(make_result("Quiz", item))
+
+    assert not app.exception
+    app.radio[0].set_value("B) Segunda opción")
+    app.run()
+    next(
+        button
+        for button in app.button
+        if button.label == "Confirmar respuesta"
+    ).click()
+    app.run()
+
+    assert not app.exception
+    assert any("¡Correcto!" in message.value for message in app.success)
+    metrics = {metric.label: metric.value for metric in app.metric}
+    assert metrics["Puntaje final"] == "100%"
+    assert metrics["Aciertos"] == "1 de 1"
+
+
 def test_loading_a_different_quiz_clears_previous_answers():
     first_result = make_result(
         "Quiz",

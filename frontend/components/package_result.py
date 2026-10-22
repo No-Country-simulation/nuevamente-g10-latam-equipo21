@@ -2,8 +2,30 @@
 
 import hashlib
 import json
+import re
 
 import streamlit as st
+
+
+def _correct_option_index(options: list[str], correct_answer: str) -> int | None:
+    """Resolve a correct answer returned as text or as an option letter."""
+    if correct_answer in options:
+        return options.index(correct_answer)
+
+    match = re.match(r"^\s*([A-Za-z])(?:\s*[).:\-]|\s*$)", correct_answer)
+    if match:
+        option_index = ord(match.group(1).upper()) - ord("A")
+        if 0 <= option_index < len(options):
+            return option_index
+
+    return None
+
+
+def _is_correct_option(
+    options: list[str], selected_option: str, correct_answer: str
+) -> bool:
+    correct_index = _correct_option_index(options, correct_answer)
+    return options.index(selected_option) == correct_index
 
 
 def render_flashcards(items: list[dict]) -> None:
@@ -62,11 +84,21 @@ def render_quiz(items: list[dict]) -> None:
                 answers[question_number] = selected_option
 
             if is_locked and confirmed_choice is not None:
-                if confirmed_choice == item["respuesta_correcta"]:
+                correct_index = _correct_option_index(
+                    options, item["respuesta_correcta"]
+                )
+                if _is_correct_option(
+                    options, confirmed_choice, item["respuesta_correcta"]
+                ):
                     st.success("¡Correcto!")
                 else:
+                    correct_display = (
+                        options[correct_index]
+                        if correct_index is not None
+                        else item["respuesta_correcta"]
+                    )
                     st.error(
-                        f"Incorrecto. La respuesta correcta es: {item['respuesta_correcta']}"
+                        f"Incorrecto. La respuesta correcta es: {correct_display}"
                     )
                 st.info(f"Justificación: {item['justificacion']}")
 
@@ -78,7 +110,11 @@ def render_quiz(items: list[dict]) -> None:
 
     if items and len(confirmed_answers) == len(items):
         correct_answers = sum(
-            confirmed_answers[str(number)] == item["respuesta_correcta"]
+            _is_correct_option(
+                item["opciones"],
+                confirmed_answers[str(number)],
+                item["respuesta_correcta"],
+            )
             for number, item in enumerate(items, 1)
         )
         score = round(correct_answers / len(items) * 100)
