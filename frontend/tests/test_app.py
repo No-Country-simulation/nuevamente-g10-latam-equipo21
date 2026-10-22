@@ -1,10 +1,59 @@
 from pathlib import Path
 
 import requests
+import pytest
 from streamlit.testing.v1 import AppTest
 
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
+
+
+@pytest.mark.parametrize("score,claims", [
+	(0.69, []),
+	(0.8, [{"item": 1, "texto": "Respuesta sin respaldo en la fuente."}]),
+])
+def test_quality_warning_survives_rerun_and_does_not_show_success(monkeypatch, score, claims):
+	from tests.test_package_result import FORMAT_CASES, make_result
+	_, item, _ = FORMAT_CASES[1]
+	result = make_result("Quiz", item, "completado")
+	result["evaluacion_calidad"].update(
+		anclaje_fuente_score=score, requiere_revision=True,
+		afirmaciones_no_respaldadas=claims,
+	)
+	responses = [FakeResponse({"text": "Fuente de prueba"}), FakeResponse(result)]
+	monkeypatch.setattr(requests, "request", lambda *args, **kwargs: responses.pop(0))
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click().run()
+	for _ in range(2):
+		assert not app.exception
+		assert any("requiere revisión" in w.value for w in app.warning)
+		assert not any("generó correctamente" in s.value for s in app.success)
+		assert not any("Contenido guardado" in s.value for s in app.success)
+		assert app.session_state["last_response"] == result
+		assert any('"requiere_revision": true' in c.value for c in app.code)
+		app.run()
+	assert not responses  # los reruns no regeneran
+
+
+def test_insufficient_document_displays_warning_without_generated_result(monkeypatch):
+	responses = [
+		FakeResponse({"text": "Fuente breve."}),
+		FakeResponse({"status": "error", "error": {
+			"codigo": "DOCUMENTO_INSUFICIENTE", "mensaje": "Agrega más información del documento original."
+		}}, ok=False),
+	]
+	monkeypatch.setattr(requests, "request", lambda *args, **kwargs: responses.pop(0))
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click().run()
+	assert not app.exception
+	assert not app.error
+	assert any("Agrega más información" in w.value for w in app.warning)
+	assert app.session_state["last_response"] is None
+	assert app.session_state["is_loading"] is False
 
 
 class FakeResponse:
@@ -92,7 +141,11 @@ def test_generation_extracts_then_adapts_and_shows_success_message(monkeypatch):
 					"introduccion_contextualizada": "Introducción",
 					"items": [],
 				},
-				"evaluacion_calidad": {},
+				"evaluacion_calidad": {
+					"anclaje_fuente_score": 1.0,
+					"umbral_fidelidad": 0.7,
+					"requiere_revision": False,
+				},
 				"almacenamiento_oci": {},
 			}
 		),

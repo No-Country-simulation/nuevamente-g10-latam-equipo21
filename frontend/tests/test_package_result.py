@@ -77,6 +77,9 @@ def make_result(output_format, item, upload_status="error"):
             "anclaje_fuente_score": 0.95,
             "claridad_pedagogica": "Alta",
             "observaciones": "Contenido conectado a la fuente.",
+            "umbral_fidelidad": 0.7,
+            "requiere_revision": False,
+            "afirmaciones_no_respaldadas": [],
         },
         "almacenamiento_oci": {
             "bucket": "bucket-prueba",
@@ -131,7 +134,7 @@ def test_each_format_renders_content_and_common_header(
 
     metrics = {metric.label: metric.value for metric in app.metric}
     assert metrics["Tiempo estimado de estudio"] == "10 min"
-    assert metrics["Anclaje a la fuente"] == "0.95"
+    assert metrics["Anclaje a la fuente"] == "95%"
     assert metrics["Claridad pedagógica"] == "Alta"
     assert len(app.json) == 0
 
@@ -177,6 +180,47 @@ def test_failed_upload_keeps_generated_content_and_shows_warning():
     assert len(app.success) == 0
 
 
+@pytest.mark.parametrize("output_format,item,_", FORMAT_CASES)
+def test_low_score_warns_in_all_formats_even_if_stored(output_format, item, _):
+    result = make_result(output_format, item, "completado")
+    result["evaluacion_calidad"].update(anclaje_fuente_score=0.69, requiere_revision=True)
+    app = render_result(result)
+    assert not app.exception
+    assert any("requiere revisión" in element.value for element in app.warning)
+    assert not app.success
+    assert "69%" in [metric.value for metric in app.metric]
+    assert ":orange[Por debajo del umbral de fidelidad (70%).]" in visible_text(app)
+
+
+def test_quiz_marks_only_observed_question_despite_high_global_score():
+    _, item, _ = FORMAT_CASES[1]
+    result = make_result("Quiz", item, "completado")
+    result["contenido_adaptado"]["items"] = [item.copy(), item.copy()]
+    result["evaluacion_calidad"].update(
+        anclaje_fuente_score=0.8, requiere_revision=True,
+        afirmaciones_no_respaldadas=[{"item": 1, "texto": "La respuesta no está respaldada."}],
+    )
+    app = render_result(result)
+    assert not app.exception
+    assert not app.success
+    assert len([w for w in app.warning if "Pregunta pendiente" in w.value]) == 1
+    assert not app.expander[0].warning  # aviso visible sin abrir la respuesta
+    assert "Respuesta propuesta" in "\n".join(e.value for e in app.expander[0].markdown)
+    assert "Respuesta correcta" in "\n".join(e.value for e in app.expander[1].markdown)
+    assert "Afirmación observada: La respuesta no está respaldada." in visible_text(app)
+    assert ":green[Alcanza el umbral de fidelidad (70%).]" in visible_text(app)
+
+
+def test_legacy_result_is_not_treated_as_approved():
+    _, item, _ = FORMAT_CASES[0]
+    result = make_result("Flashcards", item, "completado")
+    for key in ("umbral_fidelidad", "requiere_revision", "afirmaciones_no_respaldadas"):
+        result["evaluacion_calidad"].pop(key)
+    app = render_result(result)
+    assert not app.exception
+    assert not app.success
+    assert "Sin umbral informado" in visible_text(app)
+    assert any("no incluye una decisión" in e.value for e in app.info)
 def test_prerequisites_are_listed_next_to_key_concepts():
     _, item, _ = FORMAT_CASES[0]
     result = make_result("Flashcards", item)

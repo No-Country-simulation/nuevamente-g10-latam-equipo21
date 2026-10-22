@@ -29,6 +29,9 @@ EVALUACION = {
     "anclaje_fuente_score": 0.9,
     "claridad_pedagogica": "Alta",
     "observaciones": "ok",
+    "umbral_fidelidad": 0.7,
+    "requiere_revision": False,
+    "afirmaciones_no_respaldadas": [],
 }
 ITEMS_POR_FORMATO = {
     "Flashcards": [{"frente": "¿Qué es una VCN?", "dorso": "Una red privada.", "pista_didactica": "Piensa en tu LAN."}],

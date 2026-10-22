@@ -18,6 +18,7 @@ from services.api_client import (
 from components.download_json import render_json_download
 from components.download_exports import render_export_buttons
 from utils.session_state import init_session_state
+from utils.quality import requires_review
 
 
 FRONTEND_DIR = Path(__file__).resolve().parent
@@ -203,7 +204,8 @@ if submitted:
                 st.session_state["last_response"] = result
                 st.session_state["document_title"] = document_title.strip()
                 st.session_state["source_filename"] = uploaded_file.name
-                st.success("El contenido educativo se generó correctamente.")
+                if requires_review(result.get("evaluacion_calidad", {})) is False:
+                    st.success("El contenido educativo se generó correctamente.")
 
         except APIConnectionError as error:
             st.session_state["api_status"] = False

@@ -2,6 +2,8 @@
 
 import streamlit as st
 
+from utils.quality import requires_review
+
 
 def render_flashcards(items: list[dict]) -> None:
     for number, item in enumerate(items, 1):
@@ -17,10 +19,21 @@ def render_flashcards(items: list[dict]) -> None:
             st.info(f"Pista didáctica: {item['pista_didactica']}")
 
 
-def render_quiz(items: list[dict]) -> None:
+def render_quiz(
+    items: list[dict], claims: list[dict] | None = None, review_all: bool = False
+) -> None:
     for number, item in enumerate(items, 1):
         with st.container(border=True):
             st.subheader(f"Pregunta {number}")
+            observations = [claim for claim in (claims or []) if claim["item"] == number]
+            needs_review = review_all or bool(observations)
+            if needs_review:
+                st.warning(
+                    "Pregunta pendiente de revisión: su respuesta o explicación "
+                    "puede no estar respaldada por el documento."
+                )
+                for claim in observations:
+                    st.write(f"Afirmación observada: {claim['texto']}")
             st.write(item["pregunta"])
 
             for option in item["opciones"]:
@@ -30,7 +43,10 @@ def render_quiz(items: list[dict]) -> None:
                 "Ver respuesta y justificación",
                 expanded=False,
             ):
-                st.markdown("**Respuesta correcta**")
+                st.markdown(
+                    "**Respuesta propuesta (requiere revisión)**"
+                    if needs_review else "**Respuesta correcta**"
+                )
                 st.write(item["respuesta_correcta"])
 
                 st.markdown("**Justificación**")
@@ -98,6 +114,16 @@ def render_package_result(result: dict) -> None:
 
     st.divider()
     st.caption("PAQUETE EDUCATIVO GENERADO")
+    quality = result.get("evaluacion_calidad", {})
+    review = requires_review(quality)
+    claims = quality.get("afirmaciones_no_respaldadas") or []
+    if review is True:
+        st.warning(
+            "Este contenido requiere revisión: puede incluir afirmaciones no "
+            "respaldadas por el documento. Contrástalo con la fuente antes de utilizarlo."
+        )
+    elif review is None:
+        st.info("Este resultado no incluye una decisión de revisión de calidad.")
     st.header(content["titulo"])
     st.write(content["introduccion_contextualizada"])
 
@@ -122,25 +148,43 @@ def render_package_result(result: dict) -> None:
             st.write(f"• {prerequisite}")
 
     renderer = RENDERERS.get(output_format)
-    if renderer:
+    if output_format == "Quiz":
+        render_quiz(content["items"], claims, review_all=review is True and not claims)
+    elif renderer:
         renderer(content["items"])
     else:
         st.warning("El formato recibido no tiene una vista disponible.")
 
     st.subheader("Calidad del contenido")
-    quality = result.get("evaluacion_calidad", {})
 
     score_column, clarity_column = st.columns(2)
     score = quality.get("anclaje_fuente_score")
 
     score_column.metric(
         "Anclaje a la fuente",
-        f"{score:.2f}" if score is not None else "No disponible",
+        f"{score:.0%}" if score is not None else "No disponible",
     )
     clarity_column.metric(
         "Claridad pedagógica",
         quality.get("claridad_pedagogica", "No disponible"),
     )
+
+    threshold = quality.get("umbral_fidelidad")
+    if score is not None and threshold is not None:
+        if score < threshold:
+            st.markdown(f":orange[Por debajo del umbral de fidelidad ({threshold:.0%}).]")
+        else:
+            st.markdown(f":green[Alcanza el umbral de fidelidad ({threshold:.0%}).]")
+            if review:
+                st.caption("El puntaje general no descarta observaciones en afirmaciones individuales.")
+    else:
+        st.caption("Sin umbral informado: no se clasifica el puntaje como aprobado.")
+
+    if claims:
+        st.markdown("**Afirmaciones sin respaldo detectadas**")
+        for claim in claims:
+            location = "Introducción" if claim["item"] == 0 else f"Item {claim['item']}"
+            st.write(f"{location}: {claim['texto']}")
 
     st.markdown("**Observaciones**")
     st.write(quality.get("observaciones") or "Sin observaciones.")
@@ -149,12 +193,15 @@ def render_package_result(result: dict) -> None:
     storage = result.get("almacenamiento_oci", {})
 
     if storage.get("status_upload") == "completado":
-        st.success("Contenido guardado en OCI.")
+        if review is False:
+            st.success("Contenido guardado en OCI.")
+        else:
+            st.info("Contenido guardado en OCI; el almacenamiento no certifica su calidad.")
         st.text(f"Bucket: {storage['bucket']}")
         st.text(f"Objeto: {storage['objeto_id']}")
     elif storage.get("status_upload") == "error":
         st.warning(
-            "El contenido fue generado correctamente, "
+            "El contenido fue generado, "
              "pero no se persistió en OCI."
         )
     else:
