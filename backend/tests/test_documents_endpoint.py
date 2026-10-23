@@ -8,6 +8,16 @@ from pypdf import PdfWriter
 from app.core.errors import OCIAuthenticationError
 from app.main import app
 from app.schemas.output import AlmacenamientoOCISchema
+from app.services.diagram_interpretation_service import (
+    DiagramInterpretationError,
+    InterpretedDiagram,
+    get_diagram_interpretation_service,
+)
+from app.services.document_ingestion import (
+    DocumentMetadata,
+    ExtractedDocument,
+    ExtractedImage,
+)
 from app.services.oci_storage_service import get_oci_storage_service_factory
 
 from pathlib import Path
@@ -30,6 +40,26 @@ class FakeStorageService:
         )
 
 
+class FakeDiagramInterpretationService:
+    def interpret(self, image):
+        return InterpretedDiagram(
+            description="Un cliente se conecta a la API y a la base de datos.",
+            page_number=image.page_number,
+            image_index=image.image_index,
+            image_name=image.name,
+        )
+
+
+class PermissiveStorageService:
+    def upload_original(self, **kwargs):
+        return None
+
+
+class FailingDiagramInterpretationService:
+    def interpret(self, image):
+        raise DiagramInterpretationError("detalle técnico que no debe exponerse")
+
+
 @pytest.fixture(autouse=True)
 def _override_storage_service():
     app.dependency_overrides[get_oci_storage_service_factory] = (
@@ -38,6 +68,10 @@ def _override_storage_service():
     yield
     app.dependency_overrides.pop(
         get_oci_storage_service_factory,
+        None,
+    )
+    app.dependency_overrides.pop(
+        get_diagram_interpretation_service,
         None,
     )
 
@@ -64,6 +98,94 @@ def test_extract_document_endpoint_returns_text_and_metadata():
             "page_count": None,
         },
         "pages": [],
+    }
+
+
+def test_extract_document_endpoint_returns_interpreted_diagrams(monkeypatch):
+    fake_document = ExtractedDocument(
+        text="Arquitectura del sistema",
+        metadata=DocumentMetadata(
+            filename="diagram.pdf",
+            format="pdf",
+            character_count=len("Arquitectura del sistema"),
+            page_count=1,
+        ),
+        images=(
+            ExtractedImage(
+                data=b"fake-image-data",
+                name="diagram.png",
+                page_number=1,
+                image_index=1,
+                mime_type="image/png",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.documents.extract_document",
+        lambda *args, **kwargs: fake_document,
+    )
+    app.dependency_overrides[get_diagram_interpretation_service] = (
+        lambda: FakeDiagramInterpretationService()
+    )
+    app.dependency_overrides[get_oci_storage_service_factory] = (
+        lambda: PermissiveStorageService
+    )
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={"file": ("diagram.pdf", b"fake-pdf-content", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["diagramas"] == [
+        {
+            "description": "Un cliente se conecta a la API y a la base de datos.",
+            "page_number": 1,
+            "image_index": 1,
+            "image_name": "diagram.png",
+        }
+    ]
+
+
+def test_extract_document_endpoint_maps_diagram_failure_to_llm_error(monkeypatch):
+    fake_document = ExtractedDocument(
+        text="Arquitectura del sistema",
+        metadata=DocumentMetadata(
+            filename="diagram.pdf",
+            format="pdf",
+            character_count=len("Arquitectura del sistema"),
+            page_count=1,
+        ),
+        images=(
+            ExtractedImage(
+                data=b"fake-image-data",
+                name="diagram.png",
+                page_number=1,
+                image_index=1,
+                mime_type="image/png",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.documents.extract_document",
+        lambda *args, **kwargs: fake_document,
+    )
+    app.dependency_overrides[get_diagram_interpretation_service] = (
+        lambda: FailingDiagramInterpretationService()
+    )
+    app.dependency_overrides[get_oci_storage_service_factory] = (
+        lambda: PermissiveStorageService
+    )
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={"file": ("diagram.pdf", b"fake-pdf-content", "application/pdf")},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"] == {
+        "codigo": "LLM_NO_DISPONIBLE",
+        "mensaje": "No se pudo generar el contenido en este momento. Intenta nuevamente.",
     }
 
 
