@@ -504,7 +504,7 @@ Ejemplo de entrada inválida:
 
 La tabla distingue lo que ya está integrado de lo aprobado o todavía pendiente. No se asignan fechas de integración a cambios que aún no ingresaron en `develop`.
 
-Estados revisados al 19 de octubre de 2026.
+Estados revisados al 23 de octubre de 2026.
 
 | Fecha de integración (UTC) | Ticket | Entrega | Responsable | PR o referencia | Revisión | Estado |
 |---|---|---|---|---|---|---|
@@ -536,14 +536,21 @@ Estados revisados al 19 de octubre de 2026.
 | 19 oct 2026 | NM-26 | Integración de `develop` en `main`, tag y limpieza de ramas. | Leandro Melchiori | [#88](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/88) | Ever Ayala | Pase a `main` integrado; tag y limpieza de ramas pendientes |
 | — | NM-27 | Persistencia end-to-end y vínculo entre original y paquete. | Miguel Acosta | [#70](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/70) | — | En revisión; requiere completar criterios |
 | 16 oct 2026 | NM-28 | Exposición del flujo multiagente desde el endpoint. | Gustavo | [#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83) | Ever Ayala | Integrado |
+| 19 oct 2026 | NM-29 | Procesamiento de embeddings en lotes de hasta 100 fragmentos. | Ever Ayala | [#87](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/87) | Leandro Melchiori | Integrado |
+| 23 oct 2026 | NM-30 | Errores controlados, nombres originales y validación de documentos vacíos. | Ever Ayala | [#98](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/98) | Leandro Melchiori | Integrado |
+| 22 oct 2026 | NM-31 | Tema claro consistente y texto legible en los componentes de Streamlit. | Gustavo | [#103](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/103) | Ever Ayala / Leandro Melchiori | Integrado |
+| 22 oct 2026 | NM-32 | Advertencias de fidelidad y contenido sin respaldo documental. | Leandro Melchiori | [#90](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/90) | Ever Ayala | Integrado |
 | 16 oct 2026 | NM-34 | Prompts con impacto de negocio respaldado y registro de idioma consistente. | Gustavo | [#85](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/85) | Ever Ayala | Integrado |
 | 19 oct 2026 | NM-37 | Prerrequisitos visibles en el paquete educativo. | Gustavo | [#92](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/92) | Leandro Melchiori / Ever Ayala | Integrado |
 | 19 oct 2026 | NM-38 | Estado de la API en el pie, sin exponer su URL. | Hernan Rojas | [#86](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/86) | Leandro Melchiori / Ever Ayala | Integrado |
+| 19 oct 2026 | NM-39 | Protección de la demo con HTTPS y autenticación. | Leandro Melchiori | [#93](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/93) | Ever Ayala | Integrado |
+| 20 oct 2026 | NM-40 | Modelo de respaldo para Gemini ante cuota o indisponibilidad. | Leandro Melchiori | [#100](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/100) | Ever Ayala | Integrado |
+| 22 oct 2026 | NM-41 | Cierre de sesión seguro desde la interfaz desplegada. | Hernan Rojas | [#99](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/99) | Leandro Melchiori / Ever Ayala | Integrado |
 | 1 oct 2026 | NM-D1 | Flujo multiagente con Investigador, Redactor y Crítico. | Ever Ayala | [#45](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/45) | Leandro Melchiori | Integrado |
 | 14 oct 2026 | NM-D2 | Despliegue de Streamlit y FastAPI en OCI Compute. | Leandro Melchiori | [#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60) | [Gustavo: aprobación](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60#pullrequestreview-5512508948) | Integrado |
-| — | NM-D3 | Quiz interactivo con retroalimentación inmediata. | Julio Diaz | [Issue #26](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/26) | — | En desarrollo según la revisión del equipo; issue abierto, no integrado |
+| 23 oct 2026 | NM-D3 | Quiz interactivo con retroalimentación inmediata. | Julio Diaz | [#89](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/89) | Ever Ayala / Leandro Melchiori | Integrado |
 | — | NM-D4 | Interpretación de diagramas técnicos. | Jeampiero Gonzalez | [Issue #27](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/27), [#82](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/82) | — | En revisión; no integrado |
-| — | NM-D5 | Exportación a Markdown, PDF y CSV para Anki. | Hernan Rojas | [Issue #28](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/28) | — | Opcional; no incluido en la entrega actual |
+| 20 oct 2026 | NM-D5 | Exportación a Markdown, PDF y CSV para Anki. | Hernan Rojas | [#97](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/97) | Leandro Melchiori / Ever Ayala | Integrado |
 
 Los tickets organizativos iniciales del repositorio y del equipo están cerrados y permanecen disponibles en el historial de issues de GitHub.
 
@@ -552,8 +559,8 @@ los enlaces al documento fuente y a los tres JSON de demostración: no se
 localizaron en esta rama ni en `main`, ni en los comentarios del ticket. El
 cierre del issue no sustituye la verificación de esas evidencias.
 
-Las demás mejoras de NM-29 a NM-39 se siguen en el tablero del proyecto y
-en los [issues del repositorio](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues).
+Las mejoras que todavía no figuran como integradas se siguen en el tablero del
+proyecto y en los [issues del repositorio](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues).
 No se presentan como funcionalidades integradas mientras sus PR sigan abiertos.
 
 Las ramas de funcionalidad se crean desde `develop` con el formato `feature/NM-XX-descripcion`. Los cambios ingresan mediante pull request y requieren la revisión de otro integrante. Consulta [`CONTRIBUTING.md`](CONTRIBUTING.md), el [historial de `develop`](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/commits/develop/) y la vista de [contribuidores](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/graphs/contributors) para auditar la información.
