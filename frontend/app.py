@@ -18,6 +18,7 @@ from services.api_client import (
 from components.download_json import render_json_download
 from components.download_exports import render_export_buttons
 from utils.session_state import init_session_state
+from utils.quality import requires_review
 
 
 FRONTEND_DIR = Path(__file__).resolve().parent
@@ -26,6 +27,7 @@ API_BASE_URL = os.getenv(
     "API_BASE_URL",
     "http://localhost:8000/api/v1",
 ).rstrip("/")
+LOGOUT_URL = os.getenv("LOGOUT_URL", "").strip()
 
 
 def _timeout_from_environment(name: str, default: int) -> int:
@@ -120,6 +122,7 @@ has_source_document = (
 )
 options = render_adaptation_options(
     has_source_document=has_source_document,
+    logout_url=LOGOUT_URL,
 )
 st.session_state["loaded_document"] = source_document
 st.session_state["selected_parameters"] = options.copy()
@@ -202,7 +205,8 @@ if submitted:
                 st.session_state["last_response"] = result
                 st.session_state["document_title"] = document_title.strip()
                 st.session_state["source_filename"] = uploaded_file.name
-                st.success("El contenido educativo se generó correctamente.")
+                if requires_review(result.get("evaluacion_calidad", {})) is False:
+                    st.success("El contenido educativo se generó correctamente.")
 
         except APIConnectionError as error:
             st.session_state["api_status"] = False

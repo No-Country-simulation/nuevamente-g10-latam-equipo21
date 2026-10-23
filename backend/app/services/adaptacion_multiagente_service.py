@@ -20,6 +20,10 @@ from app.services.adaptacion_adapters import (
     documento_id_desde_contenido,
 )
 from app.services.adaptacion_service import AdaptacionService
+from app.services.quality_policy import (
+    aplicar_politica_calidad,
+    validar_suficiencia_documento,
+)
 
 logger = logging.getLogger("nuevamente.adaptacion")
 
@@ -58,6 +62,7 @@ class AdaptacionMultiAgenteService(AdaptacionService):
         }
 
     def adaptar(self, payload: InputSchema) -> OutputSchema:
+        validar_suficiencia_documento(payload)
         rid = get_request_id()
 
         ctx = self._paso(
@@ -84,7 +89,7 @@ class AdaptacionMultiAgenteService(AdaptacionService):
             raise LLMError()
 
         contenido = estado["contenido_adaptado"]
-        evaluacion = estado["evaluacion_calidad"]
+        evaluacion = aplicar_politica_calidad(estado["evaluacion_calidad"])
 
         metadatos = self._paso(
             "metadatos", LLMError, lambda: self._metadatos.generar(payload, contenido)

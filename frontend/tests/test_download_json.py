@@ -79,3 +79,12 @@ def test_obtener_tema_prioridad():
     assert obtener_tema(RESULTADO, "  ", "informe.pdf") == "informe"
     assert obtener_tema(RESULTADO) == "Dominando Redes"
     assert obtener_tema({}) == ""
+
+
+def test_descarga_conserva_advertencias_y_pregunta_observada():
+    resultado = {**RESULTADO, "evaluacion_calidad": {
+        "anclaje_fuente_score": 0.8, "umbral_fidelidad": 0.7,
+        "requiere_revision": True,
+        "afirmaciones_no_respaldadas": [{"item": 1, "texto": "Sin respaldo."}],
+    }}
+    assert json.loads(serializar_paquete(resultado)) == resultado
