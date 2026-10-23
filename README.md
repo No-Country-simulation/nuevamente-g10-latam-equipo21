@@ -609,17 +609,6 @@ Estados revisados al 23 de octubre de 2026.
 | — | NM-D4 | Interpretación de diagramas técnicos. | Jeampiero Gonzalez | [Issue #27](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/27), [#82](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/82), [#104](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/104) | — | En revisión; #104 completa y reemplaza #82 |
 | 20 oct 2026 | NM-D5 | Exportación a Markdown, PDF y CSV para Anki. | Hernan Rojas | [#97](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/97) | Leandro Melchiori / Ever Ayala | Integrado |
 
-Los tickets organizativos iniciales del repositorio y del equipo están cerrados y permanecen disponibles en el historial de issues de GitHub.
-
-NM-17 figura cerrado en GitHub. Queda pendiente incorporar a esta documentación
-los enlaces al documento fuente y a los tres JSON de demostración: no se
-localizaron en esta rama ni en `main`, ni en los comentarios del ticket. El
-cierre del issue no sustituye la verificación de esas evidencias.
-
-Las mejoras que todavía no figuran como integradas se siguen en el tablero del
-proyecto y en los [issues del repositorio](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues).
-No se presentan como funcionalidades integradas mientras sus PR sigan abiertos.
-
 Las ramas de funcionalidad se crean desde `develop` con el formato `feature/NM-XX-descripcion`. Los cambios ingresan mediante pull request y requieren la revisión de otro integrante. Consulta [`CONTRIBUTING.md`](CONTRIBUTING.md), el [historial de `develop`](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/commits/develop/) y la vista de [contribuidores](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/graphs/contributors) para auditar la información.
 
 ## Documentación adicional
