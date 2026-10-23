@@ -5,6 +5,7 @@ import json
 import re
 
 import streamlit as st
+from utils.quality import requires_review
 
 
 def _correct_option_index(options: list[str], correct_answer: str) -> int | None:
@@ -12,9 +13,21 @@ def _correct_option_index(options: list[str], correct_answer: str) -> int | None
     if correct_answer in options:
         return options.index(correct_answer)
 
-    match = re.match(r"^\s*([A-Za-z])(?:\s*[).:\-]|\s*$)", correct_answer)
+    match = re.match(
+        r"^\s*([A-Za-z])(?:\s*[).:\-]\s*(.*)|\s*$)", correct_answer
+    )
     if match:
         option_index = ord(match.group(1).upper()) - ord("A")
+        answer_text = match.group(2)
+        if answer_text:
+            normalized_answer = re.sub(r"\s+", " ", answer_text).strip().casefold()
+            for index, option in enumerate(options):
+                option_text = re.sub(
+                    r"^\s*[A-Za-z]\s*[).:\-]\s*", "", option
+                )
+                normalized_option = re.sub(r"\s+", " ", option_text).strip().casefold()
+                if normalized_option == normalized_answer:
+                    return index
         if 0 <= option_index < len(options):
             return option_index
 
@@ -42,7 +55,9 @@ def render_flashcards(items: list[dict]) -> None:
             st.info(f"Pista didáctica: {item['pista_didactica']}")
 
 
-def render_quiz(items: list[dict]) -> None:
+def render_quiz(
+    items: list[dict], claims: list[dict] | None = None, review_all: bool = False
+) -> None:
     quiz_signature = hashlib.sha256(
         json.dumps(items, sort_keys=True, ensure_ascii=False).encode("utf-8")
     ).hexdigest()
@@ -59,6 +74,17 @@ def render_quiz(items: list[dict]) -> None:
     for number, item in enumerate(items, 1):
         with st.container(border=True):
             st.subheader(f"Pregunta {number}")
+            observations = [
+                claim for claim in (claims or []) if claim["item"] == number
+            ]
+            needs_review = review_all or bool(observations)
+            if needs_review:
+                st.warning(
+                    "Pregunta pendiente de revisión: su respuesta o explicación "
+                    "puede no estar respaldada por el documento."
+                )
+                for claim in observations:
+                    st.write(f"Afirmación observada: {claim['texto']}")
             st.write(item["pregunta"])
 
             options = item["opciones"]
@@ -90,16 +116,28 @@ def render_quiz(items: list[dict]) -> None:
                 if _is_correct_option(
                     options, confirmed_choice, item["respuesta_correcta"]
                 ):
-                    st.success("¡Correcto!")
+                    if needs_review:
+                        st.info(
+                            "La respuesta coincide con la respuesta propuesta, "
+                            "que requiere revisión."
+                        )
+                    else:
+                        st.success("¡Correcto!")
                 else:
                     correct_display = (
                         options[correct_index]
                         if correct_index is not None
                         else item["respuesta_correcta"]
                     )
-                    st.error(
-                        f"Incorrecto. La respuesta correcta es: {correct_display}"
-                    )
+                    if needs_review:
+                        st.warning(
+                            "Tu respuesta no coincide con la respuesta propuesta "
+                            f"(requiere revisión): {correct_display}"
+                        )
+                    else:
+                        st.error(
+                            f"Incorrecto. La respuesta correcta es: {correct_display}"
+                        )
                 st.info(f"Justificación: {item['justificacion']}")
 
             if not is_locked and question_number in answers:
@@ -119,8 +157,19 @@ def render_quiz(items: list[dict]) -> None:
         )
         score = round(correct_answers / len(items) * 100)
         score_column, correct_column = st.columns(2)
-        score_column.metric("Puntaje final", f"{score}%")
-        correct_column.metric("Aciertos", f"{correct_answers} de {len(items)}")
+        has_review_items = review_all or any(
+            1 <= claim["item"] <= len(items) for claim in (claims or [])
+        )
+        score_column.metric(
+            "Puntaje sobre respuestas propuestas"
+            if has_review_items
+            else "Puntaje final",
+            f"{score}%",
+        )
+        correct_column.metric(
+            "Coincidencias" if has_review_items else "Aciertos",
+            f"{correct_answers} de {len(items)}",
+        )
 
         if st.button("Reintentar", key=f"quiz_retry_{quiz_signature}"):
             answers.clear()
@@ -190,6 +239,16 @@ def render_package_result(result: dict) -> None:
 
     st.divider()
     st.caption("PAQUETE EDUCATIVO GENERADO")
+    quality = result.get("evaluacion_calidad", {})
+    review = requires_review(quality)
+    claims = quality.get("afirmaciones_no_respaldadas") or []
+    if review is True:
+        st.warning(
+            "Este contenido requiere revisión: puede incluir afirmaciones no "
+            "respaldadas por el documento. Contrástalo con la fuente antes de utilizarlo."
+        )
+    elif review is None:
+        st.info("Este resultado no incluye una decisión de revisión de calidad.")
     st.header(content["titulo"])
     st.write(content["introduccion_contextualizada"])
 
@@ -214,25 +273,48 @@ def render_package_result(result: dict) -> None:
             st.write(f"• {prerequisite}")
 
     renderer = RENDERERS.get(output_format)
-    if renderer:
+    if output_format == "Quiz":
+        render_quiz(
+            content["items"], claims, review_all=review is True and not claims
+        )
+    elif renderer:
         renderer(content["items"])
     else:
         st.warning("El formato recibido no tiene una vista disponible.")
 
     st.subheader("Calidad del contenido")
-    quality = result.get("evaluacion_calidad", {})
-
     score_column, clarity_column = st.columns(2)
     score = quality.get("anclaje_fuente_score")
 
     score_column.metric(
         "Anclaje a la fuente",
-        f"{score:.2f}" if score is not None else "No disponible",
+        f"{score:.0%}" if score is not None else "No disponible",
     )
     clarity_column.metric(
         "Claridad pedagógica",
         quality.get("claridad_pedagogica", "No disponible"),
     )
+
+    threshold = quality.get("umbral_fidelidad")
+    if score is not None and threshold is not None:
+        if score < threshold:
+            st.markdown(f":orange[Por debajo del umbral de fidelidad ({threshold:.0%}).]")
+        else:
+            st.markdown(f":green[Alcanza el umbral de fidelidad ({threshold:.0%}).]")
+            if review:
+                st.caption(
+                    "El puntaje general no descarta observaciones en afirmaciones individuales."
+                )
+    else:
+        st.caption("Sin umbral informado: no se clasifica el puntaje como aprobado.")
+
+    if claims:
+        st.markdown("**Afirmaciones sin respaldo detectadas**")
+        for claim in claims:
+            location = (
+                "Introducción" if claim["item"] == 0 else f"Item {claim['item']}"
+            )
+            st.write(f"{location}: {claim['texto']}")
 
     st.markdown("**Observaciones**")
     st.write(quality.get("observaciones") or "Sin observaciones.")
@@ -241,7 +323,12 @@ def render_package_result(result: dict) -> None:
     storage = result.get("almacenamiento_oci", {})
 
     if storage.get("status_upload") == "completado":
-        st.success("Contenido guardado en OCI.")
+        if review is False:
+            st.success("Contenido guardado en OCI.")
+        else:
+            st.info(
+                "Contenido guardado en OCI; el almacenamiento no certifica su calidad."
+            )
         st.text(f"Bucket: {storage['bucket']}")
         st.text(f"Objeto: {storage['objeto_id']}")
     elif storage.get("status_upload") == "error":

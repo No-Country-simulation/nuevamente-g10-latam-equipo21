@@ -77,6 +77,9 @@ def make_result(output_format, item, upload_status="error"):
             "anclaje_fuente_score": 0.95,
             "claridad_pedagogica": "Alta",
             "observaciones": "Contenido conectado a la fuente.",
+            "umbral_fidelidad": 0.7,
+            "requiere_revision": False,
+            "afirmaciones_no_respaldadas": [],
         },
         "almacenamiento_oci": {
             "bucket": "bucket-prueba",
@@ -131,7 +134,7 @@ def test_each_format_renders_content_and_common_header(
 
     metrics = {metric.label: metric.value for metric in app.metric}
     assert metrics["Tiempo estimado de estudio"] == "10 min"
-    assert metrics["Anclaje a la fuente"] == "0.95"
+    assert metrics["Anclaje a la fuente"] == "95%"
     assert metrics["Claridad pedagógica"] == "Alta"
     assert len(app.json) == 0
 
@@ -244,6 +247,56 @@ def test_quiz_accepts_correct_answer_as_letter_with_prefixed_options():
     metrics = {metric.label: metric.value for metric in app.metric}
     assert metrics["Puntaje final"] == "100%"
     assert metrics["Aciertos"] == "1 de 1"
+
+
+def test_quiz_accepts_letter_and_answer_text_with_unprefixed_options():
+    item = {
+        "pregunta": "¿Cuál es la opción correcta?",
+        "opciones": ["Primera opción", "Segunda opción"],
+        "respuesta_correcta": "B) Segunda opción",
+        "justificacion": "La segunda opción es la correcta.",
+    }
+    app = render_result(make_result("Quiz", item))
+
+    assert not app.exception
+    app.radio[0].set_value("Segunda opción")
+    app.run()
+    next(
+        button
+        for button in app.button
+        if button.label == "Confirmar respuesta"
+    ).click()
+    app.run()
+
+    assert not app.exception
+    assert any("¡Correcto!" in message.value for message in app.success)
+    metrics = {metric.label: metric.value for metric in app.metric}
+    assert metrics["Puntaje final"] == "100%"
+    assert metrics["Aciertos"] == "1 de 1"
+
+
+def test_quality_warnings_are_preserved_with_interactive_quiz():
+    item = {
+        "pregunta": "¿Cuál es la opción correcta?",
+        "opciones": ["Primera opción", "Segunda opción"],
+        "respuesta_correcta": "Segunda opción",
+        "justificacion": "La segunda opción es la correcta.",
+    }
+    result = make_result("Quiz", item)
+    result["evaluacion_calidad"].update(
+        anclaje_fuente_score=0.69,
+        requiere_revision=True,
+        afirmaciones_no_respaldadas=[
+            {"item": 1, "texto": "La respuesta no está respaldada."}
+        ],
+    )
+    app = render_result(result)
+
+    assert not app.exception
+    assert any("requiere revisión" in message.value for message in app.warning)
+    assert "Afirmación observada: La respuesta no está respaldada." in visible_text(app)
+    assert ":orange[Por debajo del umbral de fidelidad (70%).]" in visible_text(app)
+    assert app.radio[0].disabled is False
 
 
 def test_loading_a_different_quiz_clears_previous_answers():
