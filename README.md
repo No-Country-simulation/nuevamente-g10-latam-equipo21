@@ -4,6 +4,13 @@ Sistema inteligente de adaptación y generación de contenido educativo desarrol
 
 NuevaMente transforma documentación técnica en materiales didácticos adaptados al perfil de quien aprende, el formato deseado, el sector de aplicación y el nivel de detalle. El proyecto combina recuperación semántica (RAG), Google Gemini, evaluación de fidelidad y persistencia en OCI Object Storage.
 
+## Demo
+
+[Probar NuevaMente](https://nuevamente.sachadev.me)
+
+El acceso requiere usuario y contraseña. Solicitá las credenciales al equipo por privado.
+Consultá la [guía de acceso](deploy/oci/DEMO_ACCESS.md) para más información.
+
 ## Problema que resuelve
 
 La documentación técnica suele asumir conocimientos previos y presentar el mismo contenido a públicos con necesidades distintas. NuevaMente permite convertir una fuente técnica en tutoriales, flashcards, cuestionarios, resúmenes ejecutivos o guiones de clase, manteniendo el contenido anclado al documento original.
@@ -56,9 +63,47 @@ endpoint -> servicio de adaptación -> RAG / Gemini / evaluación / metadatos
                                 \-> servicio de almacenamiento -> OCI
 ```
 
-El flujo lineal es el recorrido principal del endpoint del MVP. El servicio multi-agente implementado con LangGraph reutiliza retrieval, generación y evaluación para permitir ciclos de revisión controlados, pero todavía se ejecuta mediante un script de comparación y no está seleccionable desde el endpoint integral.
+El endpoint utiliza el flujo lineal por defecto (`USE_MULTIAGENT=false`). Con `USE_MOCK_LLM=false` y `USE_MULTIAGENT=true`, selecciona el servicio multi-agente de LangGraph, que reutiliza retrieval, generación y evaluación para permitir ciclos de revisión controlados. La selección del flujo depende de la configuración del entorno desplegado.
 
 La descripción completa y los contratos de datos se encuentran en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+### Advertencias de fidelidad (NM-32)
+
+La política se aplica en el backend, tanto al flujo lineal como al multiagente,
+sin modificar el cálculo de fidelidad de NM-09.
+`FIDELITY_SCORE_THRESHOLD` (por defecto `0.7`, entre 0 y 1) determina cuándo
+el score queda por debajo del mínimo. Igualar el umbral no se considera estar por debajo.
+Además, cualquier afirmación que el verificador marque sin respaldo requiere revisión,
+aunque el score global supere ese mínimo.
+
+El bloque `evaluacion_calidad` agrega estos campos:
+
+| Campo | Significado |
+|---|---|
+| `umbral_fidelidad` | Umbral aplicado por el backend. |
+| `requiere_revision` | `true` si el score está bajo el umbral o hay afirmaciones sin respaldo. |
+| `afirmaciones_no_respaldadas` | Lista de `{ "item": 1, "texto": "..." }`. El índice 0 representa la introducción y 1..N la posición del item. |
+
+Streamlit muestra el score como porcentaje con un indicador de color y texto respecto
+del umbral. Los resultados observados muestran una advertencia, no una confirmación
+verde de generación. En Quiz se marca visiblemente cada pregunta observada y su respuesta
+se presenta como propuesta pendiente de revisión. Si solo hay un score bajo, sin detalle
+por item, se advierte sobre todas las preguntas. NM-32 no agrega regeneración ni elimina
+items. El flujo multiagente conserva sus ciclos de revisión de NM-28; las advertencias
+se aplican al resultado final, incluso si agotó los reintentos o conserva afirmaciones
+sin respaldo con un score alto. El detalle se conserva en la respuesta,
+en el JSON descargable y en el paquete enviado a OCI.
+
+Antes de indexar o generar, ambos flujos reales exigen `DOCUMENT_MIN_WORDS` palabras (por defecto
+`30`, configurable con un entero positivo). Si no se alcanza, devuelve HTTP 422 con
+`DOCUMENTO_INSUFICIENTE` y la interfaz pide ampliar la fuente. Es un filtro preventivo
+de longitud común a los cinco formatos, no una garantía de suficiencia semántica:
+superarlo no asegura que el documento permita responder cualquier pregunta.
+La evaluación posterior sigue siendo necesaria y depende del verificador.
+
+Los paquetes antiguos pueden tener los nuevos campos ausentes o nulos: se muestran
+sin decisión de calidad, sin asumir un umbral ni aprobarlos. El modo mock devuelve
+una evaluación sintética, no valida la suficiencia de la fuente ni llama a proveedores.
 
 ## Tecnologías principales
 
@@ -81,9 +126,9 @@ La descripción completa y los contratos de datos se encuentran en [`docs/ARCHIT
 |---|---|
 | Backend FastAPI | Implementado: ingesta, RAG, generación, fidelidad, metadatos y persistencia OCI. |
 | Pipeline lineal | Integrado en `POST /api/v1/adaptar-contenido`. |
-| Flujo multi-agente | Implementado y probado mediante script; exposición desde el endpoint en revisión en NM-28 ([#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83)), todavía no integrada. |
+| Flujo multi-agente | Integrado en el endpoint mediante NM-28 ([#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83)), seleccionable con `USE_MULTIAGENT=true` y `USE_MOCK_LLM=false`. |
 | Frontend Streamlit | Implementado y conectado a los endpoints de extracción y adaptación de FastAPI. |
-| Despliegue OCI Compute | Integrado mediante NM-D2 ([#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60)): Streamlit público, FastAPI sin publicación directa y persistencia real en Object Storage. Validación funcional con un documento corto de 1112 bytes y un escenario Principiante/Tutorial. |
+| Despliegue OCI Compute | Streamlit con acceso HTTPS y autenticación, FastAPI sin publicación directa y persistencia real en Object Storage. Validación funcional con un documento corto de 1112 bytes y un escenario Principiante/Tutorial. |
 | Vínculo entre original y paquete | Pendiente de completar en NM-27: los objetos se persisten, pero el paquete todavía no referencia al original. |
 | Contrato uniforme de errores | Pendiente en NM-21 para los casos que aún responden fuera del sobre común. |
 
@@ -199,6 +244,7 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 | `PROJECT_NAME` | `NuevaMente API` | Nombre expuesto por FastAPI. |
 | `VERSION` | `0.1.0` | Versión informativa de la API. |
 | `USE_MOCK_LLM` | `true` | Activa la respuesta mock sin llamadas externas. |
+| `USE_MULTIAGENT` | `false` | Selecciona el grafo multiagente cuando el modo mock está desactivado. Ambos flujos reales aplican la política de NM-32. |
 | `CORS_ORIGINS` | `["http://localhost:8501"]` | Orígenes autorizados para el frontend. |
 
 ### Gemini y RAG
@@ -207,6 +253,7 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 |---|---|---|
 | `GEMINI_API_KEY` | `tu_api_key_aqui` | Credencial de Gemini; obligatoria para el pipeline real. |
 | `GEMINI_MODEL_NAME` | `gemini-3.8-flash` | Modelo generativo. |
+| `GEMINI_FALLBACK_MODEL_NAME` | vacío | Modelo de respaldo opcional ante cuota (429) o indisponibilidad (503); debe ser distinto del principal. |
 | `GEMINI_EMBEDDING_MODEL_NAME` | `gemini-embedding-001` | Modelo de embeddings. |
 | `GEMINI_TIMEOUT_SECONDS` | `30` | Tiempo máximo por llamada al proveedor. |
 | `CHROMA_PERSIST_DIRECTORY` | `./chroma_db` | Directorio local de ChromaDB. |
@@ -214,7 +261,13 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.35` | Umbral mínimo de similitud. |
 | `RETRIEVAL_MAX_CONTEXT_TOKENS` | `2000` | Límite del contexto ensamblado. |
 | `FIDELITY_SCORE_THRESHOLD` | `0.7` | Umbral de fidelidad contra la fuente. |
+| `DOCUMENT_MIN_WORDS` | `30` | Mínimo preventivo de palabras antes de indexar y generar en el flujo real. |
 | `MULTI_AGENT_MAX_ITERATIONS` | `3` | Máximo de iteraciones Redactor-Crítico del flujo multi-agente. |
+
+Si se configura un modelo de respaldo, `GeminiProvider` lo utiliza solo cuando el
+principal falla por cuota o indisponibilidad. Los demás errores mantienen el
+comportamiento anterior. Si ambos modelos fallan, la API conserva el error
+`LLM_NO_DISPONIBLE`; el modelo utilizado y el motivo del cambio quedan solo en logs.
 
 ### OCI Object Storage
 
@@ -285,6 +338,10 @@ Las fallas de autenticación o autorización contra OCI se consideran errores de
 ## Despliegue en OCI Compute
 
 El despliegue validado ejecuta FastAPI y Streamlit como contenedores separados.
+La demo cuenta con HTTPS y autenticación mediante usuario y contraseña. El acceso
+de evaluadores, las pruebas externas y la limpieza administrativa del bucket se
+describen en [la guía de acceso protegido](deploy/oci/DEMO_ACCESS.md).
+
 Traefik publica únicamente la interfaz. FastAPI no publica puertos en el host
 ni tiene una ruta habilitada en Traefik; el frontend lo consume mediante la red
 `backend_internal`. El backend también está conectado a `proxy` para tener
