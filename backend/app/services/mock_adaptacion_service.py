@@ -126,6 +126,39 @@ def _mock_quiz(payload: InputSchema) -> OutputSchema:
             respuesta_correcta="Aislar y controlar el tráfico de red en la nube",
             justificacion="La VCN define el espacio de red privado del tenant (MOCK).",
         ),
+        QuizItem(
+            pregunta="¿Qué recurso permite controlar el tráfico de una subred mediante reglas?",
+            opciones=[
+                "Security Lists",
+                "Object Storage",
+                "Compute Instances",
+                "Compartments",
+            ],
+            respuesta_correcta="Security Lists",
+            justificacion="Las Security Lists aplican reglas de entrada y salida al tráfico de las VNIC de una subred (MOCK).",
+        ),
+        QuizItem(
+            pregunta="¿Qué función cumple una subred dentro de una VCN?",
+            opciones=[
+                "Organizar recursos de red dentro de un rango CIDR",
+                "Crear usuarios para la consola",
+                "Almacenar copias de seguridad",
+                "Aumentar automáticamente la memoria de una instancia",
+            ],
+            respuesta_correcta="Organizar recursos de red dentro de un rango CIDR",
+            justificacion="Una subred es una división de la VCN con un rango CIDR propio donde se conectan recursos (MOCK).",
+        ),
+        QuizItem(
+            pregunta="¿Qué gateway se utiliza para habilitar conectividad entre una VCN e internet?",
+            opciones=[
+                "Internet Gateway",
+                "Service Gateway",
+                "Dynamic Routing Gateway",
+                "NAT Gateway",
+            ],
+            respuesta_correcta="Internet Gateway",
+            justificacion="El Internet Gateway permite la comunicación directa entre recursos de una VCN y destinos en internet, según sus rutas y reglas de seguridad (MOCK).",
+        ),
     ]
     return OutputSchema(
         status="exito",

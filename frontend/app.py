@@ -184,7 +184,8 @@ if submitted:
         st.session_state["is_loading"] = True
         try:
             with loading_indicator(
-                "Extrayendo el documento y preparando el material..."
+                "Extrayendo el documento y preparando el material. "
+                "Los documentos largos pueden tardar más de un minuto..."
             ):
                 result = run_adaptation(
                     uploaded_file,

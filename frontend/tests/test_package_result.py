@@ -24,7 +24,7 @@ FORMAT_CASES = [
             "respuesta_correcta": "Aislar la red",
             "justificacion": "Permite controlar el tráfico.",
         },
-        ["¿Para qué sirve una VCN?", "Editar imágenes", "Permite controlar el tráfico."],
+        ["¿Para qué sirve una VCN?"],
     ),
     (
         "Tutorial",
@@ -139,20 +139,211 @@ def test_each_format_renders_content_and_common_header(
     assert len(app.json) == 0
 
 
-def test_quiz_answer_and_justification_are_inside_closed_expander():
+def test_quiz_shows_feedback_only_after_confirming_and_locks_answer():
     _, item, _ = FORMAT_CASES[1]
     app = render_result(make_result("Quiz", item))
 
     assert not app.exception
-    expander = app.expander[0]
-    assert expander.label == "Ver respuesta y justificación"
-    assert expander.proto.expanded is False
+    assert app.radio[0].value is None
+    assert app.radio[0].options == ["Aislar la red", "Editar imágenes"]
+    assert len(app.info) == 0
 
-    text = "\n".join(element.value for element in expander.markdown)
-    assert "Respuesta correcta" in text
-    assert "Aislar la red" in text
-    assert "Justificación" in text
-    assert "Permite controlar el tráfico." in text
+    app.radio[0].set_value("Editar imágenes")
+    app.run()
+
+    assert not app.exception
+    assert len(app.error) == 0
+    assert len(app.info) == 0
+    assert any(button.label == "Confirmar respuesta" for button in app.button)
+
+    next(button for button in app.button if button.label == "Confirmar respuesta").click()
+    app.run()
+
+    assert not app.exception
+    assert any("Incorrecto" in message.value for message in app.error)
+    assert any("Permite controlar el tráfico." in message.value for message in app.info)
+    assert app.radio[0].disabled
+    assert any(button.label == "Reintentar" for button in app.button)
+
+
+def test_quiz_score_and_retry_reset_answers():
+    items = [
+        {
+            "pregunta": "¿Para qué sirve una VCN?",
+            "opciones": ["Aislar la red", "Editar imágenes"],
+            "respuesta_correcta": "Aislar la red",
+            "justificacion": "Permite controlar el tráfico.",
+        },
+        {
+            "pregunta": "¿Qué controla el tráfico?",
+            "opciones": ["Security Lists", "Flashcards"],
+            "respuesta_correcta": "Security Lists",
+            "justificacion": "Las listas definen reglas de tráfico.",
+        },
+    ]
+    result = make_result("Quiz", items[0])
+    result["contenido_adaptado"]["items"] = items
+    app = AppTest.from_string(
+        f"""
+import sys
+sys.path.insert(0, {str(FRONTEND_DIR)!r})
+from components.package_result import render_package_result
+render_package_result({result!r})
+""",
+        default_timeout=10,
+    ).run()
+
+    assert not app.exception
+    app.radio[0].set_value("Editar imágenes")
+    app.run()
+    next(button for button in app.button if button.label == "Confirmar respuesta").click()
+    app.run()
+
+    app.radio[1].set_value("Security Lists")
+    app.run()
+    next(button for button in app.button if button.label == "Confirmar respuesta").click()
+    app.run()
+
+    assert not app.exception
+    assert any("¡Correcto!" in message.value for message in app.success)
+    metrics = {metric.label: metric.value for metric in app.metric}
+    assert metrics["Puntaje final"] == "50%"
+    assert metrics["Aciertos"] == "1 de 2"
+    assert len(app.button) == 1
+
+    previous_widget_keys = [radio.key for radio in app.radio]
+    app.button[0].click()
+    app.run()
+
+    assert not app.exception
+    assert [radio.key for radio in app.radio] != previous_widget_keys
+    assert [radio.value for radio in app.radio] == [None, None]
+    assert "Puntaje final" not in {metric.label for metric in app.metric}
+    assert app.session_state["quiz_answers"] == {}
+    assert app.session_state["quiz_confirmed_answers"] == {}
+
+
+def test_quiz_accepts_correct_answer_as_letter_with_prefixed_options():
+    item = {
+        "pregunta": "¿Cuál es la opción correcta?",
+        "opciones": ["A) Primera opción", "B) Segunda opción"],
+        "respuesta_correcta": "B",
+        "justificacion": "La segunda opción es la correcta.",
+    }
+    app = render_result(make_result("Quiz", item))
+
+    assert not app.exception
+    app.radio[0].set_value("B) Segunda opción")
+    app.run()
+    next(
+        button
+        for button in app.button
+        if button.label == "Confirmar respuesta"
+    ).click()
+    app.run()
+
+    assert not app.exception
+    assert any("¡Correcto!" in message.value for message in app.success)
+    metrics = {metric.label: metric.value for metric in app.metric}
+    assert metrics["Puntaje final"] == "100%"
+    assert metrics["Aciertos"] == "1 de 1"
+
+
+def test_quiz_accepts_letter_and_answer_text_with_unprefixed_options():
+    item = {
+        "pregunta": "¿Cuál es la opción correcta?",
+        "opciones": ["Primera opción", "Segunda opción"],
+        "respuesta_correcta": "B) Segunda opción",
+        "justificacion": "La segunda opción es la correcta.",
+    }
+    app = render_result(make_result("Quiz", item))
+
+    assert not app.exception
+    app.radio[0].set_value("Segunda opción")
+    app.run()
+    next(
+        button
+        for button in app.button
+        if button.label == "Confirmar respuesta"
+    ).click()
+    app.run()
+
+    assert not app.exception
+    assert any("¡Correcto!" in message.value for message in app.success)
+    metrics = {metric.label: metric.value for metric in app.metric}
+    assert metrics["Puntaje final"] == "100%"
+    assert metrics["Aciertos"] == "1 de 1"
+
+
+def test_quality_warnings_are_preserved_with_interactive_quiz():
+    item = {
+        "pregunta": "¿Cuál es la opción correcta?",
+        "opciones": ["Primera opción", "Segunda opción"],
+        "respuesta_correcta": "Segunda opción",
+        "justificacion": "La segunda opción es la correcta.",
+    }
+    result = make_result("Quiz", item)
+    result["evaluacion_calidad"].update(
+        anclaje_fuente_score=0.69,
+        requiere_revision=True,
+        afirmaciones_no_respaldadas=[
+            {"item": 1, "texto": "La respuesta no está respaldada."}
+        ],
+    )
+    app = render_result(result)
+
+    assert not app.exception
+    assert any("requiere revisión" in message.value for message in app.warning)
+    assert "Afirmación observada: La respuesta no está respaldada." in visible_text(app)
+    assert ":orange[Por debajo del umbral de fidelidad (70%).]" in visible_text(app)
+    assert app.radio[0].disabled is False
+
+
+def test_loading_a_different_quiz_clears_previous_answers():
+    first_result = make_result(
+        "Quiz",
+        {
+            "pregunta": "Pregunta anterior",
+            "opciones": ["Respuesta anterior", "Otra"],
+            "respuesta_correcta": "Respuesta anterior",
+            "justificacion": "Justificación anterior.",
+        },
+    )
+    second_result = make_result(
+        "Quiz",
+        {
+            "pregunta": "Pregunta nueva",
+            "opciones": ["Respuesta nueva", "Otra"],
+            "respuesta_correcta": "Respuesta nueva",
+            "justificacion": "Justificación nueva.",
+        },
+    )
+    app = AppTest.from_string(
+        f"""
+import sys
+sys.path.insert(0, {str(FRONTEND_DIR)!r})
+import streamlit as st
+from components.package_result import render_package_result
+st.session_state["quiz_result"] = {first_result!r}
+if st.button("Cargar otro cuestionario"):
+    st.session_state["quiz_result"] = {second_result!r}
+render_package_result(st.session_state["quiz_result"])
+""",
+        default_timeout=10,
+    ).run()
+
+    app.radio[0].set_value("Otra")
+    app.run()
+    assert app.session_state["quiz_answers"] == {"1": "Otra"}
+
+    app.button[0].click()
+    app.run()
+
+    assert not app.exception
+    assert app.radio[0].value is None
+    assert app.session_state["quiz_answers"] == {}
+    assert app.session_state["quiz_confirmed_answers"] == {}
+    assert not any("Justificación anterior." in message.value for message in app.info)
 
 
 def test_completed_upload_shows_confirmation_bucket_and_object():
@@ -204,9 +395,8 @@ def test_quiz_marks_only_observed_question_despite_high_global_score():
     assert not app.exception
     assert not app.success
     assert len([w for w in app.warning if "Pregunta pendiente" in w.value]) == 1
-    assert not app.expander[0].warning  # aviso visible sin abrir la respuesta
-    assert "Respuesta propuesta" in "\n".join(e.value for e in app.expander[0].markdown)
-    assert "Respuesta correcta" in "\n".join(e.value for e in app.expander[1].markdown)
+    assert len(app.radio) == 2
+    assert all(not radio.disabled for radio in app.radio)
     assert "Afirmación observada: La respuesta no está respaldada." in visible_text(app)
     assert ":green[Alcanza el umbral de fidelidad (70%).]" in visible_text(app)
 
