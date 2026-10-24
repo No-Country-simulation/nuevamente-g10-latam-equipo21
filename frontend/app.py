@@ -167,7 +167,10 @@ if uploaded_file is not None:
     elif uploaded_file.size == 0:
         st.warning("El archivo está vacío. Sube un documento con contenido.")
     else:
-        st.success(f"Documento cargado: {uploaded_file.name}")
+        st.info(
+            f"Documento cargado: {uploaded_file.name} "
+            "(pendiente de validación al generar contenido)"
+        )
 
 with st.form("adaptation_form"):
     default_title = Path(uploaded_file.name).stem if uploaded_file else ""
@@ -193,8 +196,8 @@ if submitted:
         st.session_state["is_loading"] = True
         try:
             with loading_indicator(
-                "Extrayendo el documento y preparando el material. "
-                "Los documentos largos pueden tardar más de un minuto..."
+                "Extrayendo el documento y preparando el material... "
+                "Este proceso puede tomar hasta 2 minutos."
             ):
                 result = run_adaptation(
                     uploaded_file,

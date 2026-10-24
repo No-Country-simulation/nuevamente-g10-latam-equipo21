@@ -14,7 +14,9 @@ def render_error(error: Mapping[str, Any]) -> None:
 
     if code == "DOCUMENTO_INSUFICIENTE":
         st.warning(message)
-    elif isinstance(code, str) and code.strip():
-        st.error(f"{code}: {message}")
-    else:
-        st.error(message)
+        return
+
+    st.error(message)
+
+    if isinstance(code, str) and code.strip():
+        st.caption(f"Código técnico: {code}")
