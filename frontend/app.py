@@ -104,6 +104,9 @@ def run_adaptation(
     pages = extracted.get("pages") or []
     if pages:
         payload["documento_paginas"] = pages
+    diagrams = extracted.get("diagramas") or []
+    if diagrams:
+        payload["diagramas"] = diagrams
     return adapt_document(
         api_base_url=API_BASE_URL,
         payload=payload,

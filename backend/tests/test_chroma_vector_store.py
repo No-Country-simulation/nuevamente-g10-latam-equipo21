@@ -185,3 +185,37 @@ def test_integracion_con_recuperacion_y_ensamblado(tmp_path):
     assert "guia de python para datos" in contexto
     assert "documento=doc-001" in contexto
     assert "pagina=1" in contexto
+
+
+def test_diagrama_conserva_metadatos_y_descripcion_en_contexto(tmp_path):
+    description = "diagrama python conectado a una base de datos"
+    diagram = TextChunk(
+        document_id="doc-diagrama",
+        chunk_index=0,
+        text=description,
+        page_number=3,
+        char_start=0,
+        char_end=len(description),
+        source_type="diagram",
+        image_index=2,
+        image_name="arquitectura.png",
+    )
+    store = _store_con([diagram], tmp_path)
+    vector_store = ChromaVectorStore(store)
+
+    results = recuperar_contexto(
+        consulta="python",
+        vector_store=vector_store,
+        top_k=1,
+        umbral=0.0,
+        documento_id="doc-diagrama",
+    )
+    context = ensamblar_contexto(results)
+
+    assert results[0].metadatos["pagina"] == 3
+    assert results[0].metadatos["source_type"] == "diagram"
+    assert results[0].metadatos["image_index"] == 2
+    assert results[0].metadatos["image_name"] == "arquitectura.png"
+    assert description in context
+    assert "source_type=diagram" in context
+    assert "pagina=3" in context

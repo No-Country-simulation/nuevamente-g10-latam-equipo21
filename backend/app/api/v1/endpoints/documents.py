@@ -6,13 +6,20 @@ from typing import Annotated, Callable
 
 from fastapi import APIRouter, Depends, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
+
 from app.core.errors import (
     DocumentoInvalidoError,
     DocumentoNoSoportadoError,
     DocumentoSinTextoError,
+    LLMError,
     OCIAuthenticationError,
 )
 
+from app.services.diagram_interpretation_service import (
+    DiagramInterpretationError,
+    DiagramInterpretationService,
+    get_diagram_interpretation_service,
+)
 from app.services.document_ingestion import (
     DocumentExtractionError,
     EmptyPdfTextError,
@@ -40,6 +47,10 @@ async def extract_document_endpoint(
         Callable[[], OCIStorageService],
         Depends(get_oci_storage_service_factory),
     ],
+    diagram_service: Annotated[
+        DiagramInterpretationService,
+        Depends(get_diagram_interpretation_service),
+    ],
 ):
     """Recibe un documento desde el frontend y retorna le texto extraído y metadatos."""
     suffix = Path(file.filename or "").suffix
@@ -52,9 +63,9 @@ async def extract_document_endpoint(
             temporary_file.write(content)
 
         document = extract_document(
-                                        temporary_path,
-                                        original_filename=file.filename or "documento",
-                                    )
+            temporary_path,
+            original_filename=file.filename or "documento",
+        )
         metadata = replace(
             document.metadata,
             filename=file.filename or temporary_path.name,
@@ -78,11 +89,26 @@ async def extract_document_endpoint(
                 "No se pudo persistir el documento original en OCI (%s); se continúa.",
                 type(error).__name__,
             )
-        return {
+
+        diagrams = []
+        try:
+            for image in document.images:
+                interpreted = await run_in_threadpool(
+                    diagram_service.interpret,
+                    image,
+                )
+                diagrams.append(asdict(interpreted))
+        except DiagramInterpretationError as error:
+            raise LLMError() from error
+
+        response = {
             "text": document.text,
             "metadata": asdict(metadata),
             "pages": [asdict(pagina) for pagina in document.pages],
         }
+        if diagrams:
+            response["diagramas"] = diagrams
+        return response
     except UnsupportedDocumentFormatError as error:
         raise DocumentoNoSoportadoError(str(error)) from error
     except EmptyPdfTextError as error:

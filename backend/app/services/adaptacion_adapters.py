@@ -38,6 +38,7 @@ from app.services.adaptacion_service import (
     ContextoRecuperado,
     FuenteContexto,
 )
+from app.services.chunking import TextChunk
 
 logger = logging.getLogger("nuevamente.adaptacion")
 
@@ -159,6 +160,20 @@ class ContextoRealAdapter:
                 document_id=doc_id,
                 pages=_paginas_para_indexar(payload),
             )
+            for diagram in getattr(payload, "diagramas", []):
+                chunks.append(
+                    TextChunk(
+                        document_id=doc_id,
+                        chunk_index=len(chunks),
+                        text=diagram.description,
+                        page_number=diagram.page_number,
+                        char_start=0,
+                        char_end=len(diagram.description),
+                        source_type="diagram",
+                        image_index=diagram.image_index,
+                        image_name=diagram.image_name,
+                    )
+                )
             self._store.index_chunks(chunks)
 
         consultas = construir_consultas(payload.documento_titulo, payload.documento_contenido)

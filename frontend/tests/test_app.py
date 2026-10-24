@@ -384,6 +384,35 @@ def test_generation_without_pages_omits_documento_paginas(monkeypatch):
 	assert "documento_paginas" not in calls[1][2]["json"]
 
 
+def test_generation_forwards_extracted_diagrams(monkeypatch):
+	calls = []
+	diagrams = [
+		{
+			"description": "Un cliente se conecta a la API y luego a la base de datos.",
+			"page_number": 2,
+			"image_index": 1,
+			"image_name": "diagram.png",
+		}
+	]
+	responses = [
+		FakeResponse({"text": "Texto fuente", "metadata": {}, "diagramas": diagrams}),
+		FakeResponse({"status": "exito", "mensaje": "Contenido listo"}),
+	]
+
+	def fake_request(method, url, **kwargs):
+		calls.append((method, url, kwargs))
+		return responses.pop(0)
+
+	monkeypatch.setattr(requests, "request", fake_request)
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.pdf", b"%PDF-1.4", "application/pdf"))
+	app.run()
+	app.button[0].click()
+	app.run()
+
+	assert calls[1][2]["json"]["diagramas"] == diagrams
+
+
 # --- NM-38: el pie no expone la URL de la API ---
 def _footer(app) -> str:
 	footers = [element.value for element in app.markdown if 'class="api-footnote"' in element.value]
