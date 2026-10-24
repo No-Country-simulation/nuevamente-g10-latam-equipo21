@@ -36,6 +36,16 @@ def test_environment_loaded_from_env_var(monkeypatch):
     assert settings.ENVIRONMENT == "staging"
 
 
+def test_gemini_fallback_model_is_optional_and_can_be_configured(monkeypatch):
+    monkeypatch.delenv("GEMINI_FALLBACK_MODEL_NAME", raising=False)
+    defaults = Settings(ENVIRONMENT="test", USE_MOCK_LLM=True, _env_file=None)
+    assert defaults.GEMINI_FALLBACK_MODEL_NAME == ""
+
+    monkeypatch.setenv("GEMINI_FALLBACK_MODEL_NAME", "gemini-3.5-flash-lite")
+    configured = Settings(ENVIRONMENT="test", USE_MOCK_LLM=True, _env_file=None)
+    assert configured.GEMINI_FALLBACK_MODEL_NAME == "gemini-3.5-flash-lite"
+
+
 def test_environment_loaded_from_dotenv_file(tmp_path, monkeypatch):
     """
     Verifica que la configuración se cargue correctamente

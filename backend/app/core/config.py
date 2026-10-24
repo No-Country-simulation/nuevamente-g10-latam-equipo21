@@ -1,7 +1,7 @@
 import json
 from typing import List, Literal, Union
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     # Configuración de Google Gemini
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL_NAME: str = "gemini-3.8-flash"
+    GEMINI_FALLBACK_MODEL_NAME: str = ""
     GEMINI_EMBEDDING_MODEL_NAME: str = "gemini-embedding-001"
     GEMINI_TIMEOUT_SECONDS: float = 30.0
 
@@ -66,10 +67,17 @@ class Settings(BaseSettings):
     RETRIEVAL_VENTANA_CHARS: int = 2000
 
     # Verificación de fidelidad (NM-09)
-    FIDELITY_SCORE_THRESHOLD: float = 0.7
+    FIDELITY_SCORE_THRESHOLD: float = Field(default=0.7, ge=0, le=1, allow_inf_nan=False)
+
+    # Filtro preventivo de fuentes muy cortas (NM-32), antes de consumir proveedores.
+    DOCUMENT_MIN_WORDS: int = Field(default=30, ge=1)
 
     # Orquestación multi-agente con LangGraph (NM-D1)
     MULTI_AGENT_MAX_ITERATIONS: int = 3
+
+    # Usa el grafo multi-agente en el endpoint de adaptación (NM-28).
+    # False = orquestación lineal (NM-08 + NM-09), que queda como fallback.
+    USE_MULTIAGENT: bool = False
 
     # Oracle Cloud Infrastructure (OCI Object Storage)
     OCI_AUTH_MODE: Literal["instance_principal", "api_key"] = "instance_principal"

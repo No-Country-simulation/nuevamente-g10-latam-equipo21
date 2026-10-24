@@ -6,4 +6,4 @@ Evidencia del documento (única fuente permitida para dar por respaldada una afi
 Contenido generado:
 {contenido}
 
-Verificá el contenido generado siguiendo las reglas del mensaje de sistema.
+Verifica el contenido generado siguiendo las reglas del mensaje de sistema.

@@ -103,7 +103,7 @@ class LLMProviderFake:
                 {
                     "afirmaciones": [
                         {
-                            "item": posicion + 1,
+                            "item": 1,  # el redactor falso genera un único item
                             "texto": f"Afirmación {posicion + 1}",
                             "respaldada": respaldada,
                         }
@@ -184,6 +184,25 @@ def test_score_alto_finaliza_en_primer_intento():
     assert provider.revisiones == 1
 
 
+def test_score_alto_con_afirmacion_sin_respaldo_conserva_advertencia():
+    provider = LLMProviderFake([[True, True, True, True, False]])
+    grafo = crear_grafo_multiagente(
+        vector_store=VectorStoreFake(), llm_provider=provider,
+        max_iterations=3, fidelity_threshold=0.7,
+    )
+
+    resultado = grafo.invoke(estado_inicial())
+
+    evaluacion = resultado["evaluacion_calidad"]
+    assert resultado["iteracion"] == 1
+    assert evaluacion.anclaje_fuente_score == 0.8
+    assert evaluacion.umbral_fidelidad == 0.7
+    assert evaluacion.requiere_revision is True
+    assert [a.model_dump() for a in evaluacion.afirmaciones_no_respaldadas] == [
+        {"item": 1, "texto": "Afirmación 5"},
+    ]
+
+
 def test_score_bajo_vuelve_al_redactor():
     store = VectorStoreFake()
 
@@ -215,6 +234,8 @@ def test_score_bajo_vuelve_al_redactor():
 
     assert provider.generaciones == 2
     assert provider.revisiones == 2
+    assert resultado["evaluacion_calidad"].requiere_revision is False
+    assert resultado["evaluacion_calidad"].afirmaciones_no_respaldadas == []
 
 
 def test_score_siempre_bajo_respeta_maximo_iteraciones():
@@ -240,6 +261,11 @@ def test_score_siempre_bajo_respeta_maximo_iteraciones():
     )
 
     assert resultado["iteracion"] == 3
+    evaluacion = resultado["evaluacion_calidad"]
+    assert evaluacion.requiere_revision is True
+    assert evaluacion.umbral_fidelidad == 0.7
+    assert evaluacion.afirmaciones_no_respaldadas[0].item == 1
+    assert evaluacion.afirmaciones_no_respaldadas[0].texto == "Afirmación 1"
 
     assert (
         resultado["evaluacion_calidad"]
@@ -403,3 +429,54 @@ def test_multiagente_mejora_score_despues_de_revision():
         "Evaluación realizada por el crítico."
         in segundo_intento
     )
+
+class _LLMQueNoDebeLlamarse:
+    """El nodo investigador no debe tocar el LLM."""
+
+    def generate_structured(self, *args, **kwargs):
+        raise AssertionError("El investigador no debe llamar al LLM")
+
+
+def _primera_actualizacion(estado_inicial, vector_store):
+    grafo = crear_grafo_multiagente(
+        vector_store=vector_store,
+        llm_provider=_LLMQueNoDebeLlamarse(),
+    )
+    # La primera actualización es la del nodo investigador.
+    for actualizacion in grafo.stream(estado_inicial, stream_mode="updates"):
+        return actualizacion
+    return None
+
+
+def test_investigador_no_recupera_si_el_contexto_ya_viene_en_el_estado():
+    vector_store = VectorStoreFake()
+
+    actualizacion = _primera_actualizacion(
+        {
+            "documento_id": "doc-001",
+            "documento_titulo": "Titulo",
+            "consulta_recuperacion": "consulta",
+            "contexto_recuperado": "contexto ya recuperado por el servicio",
+        },
+        vector_store,
+    )
+
+    assert "investigador" in actualizacion
+    assert vector_store.consultas == []
+
+
+def test_investigador_recupera_si_el_estado_no_trae_contexto():
+    vector_store = VectorStoreFake()
+
+    actualizacion = _primera_actualizacion(
+        {
+            "documento_id": "doc-001",
+            "documento_titulo": "Titulo",
+            "consulta_recuperacion": "consulta",
+        },
+        vector_store,
+    )
+
+    assert "investigador" in actualizacion
+    assert vector_store.consultas == ["consulta"]
+    assert actualizacion["investigador"]["contexto_recuperado"]

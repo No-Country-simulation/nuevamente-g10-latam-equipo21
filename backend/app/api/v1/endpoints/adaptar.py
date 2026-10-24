@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.schemas.input import InputSchema
-from app.schemas.output import OutputSchema
+from app.schemas.output import ErrorResponseSchema, OutputSchema
 from app.services.dependencies import get_adaptacion_service
 
 router = APIRouter()
@@ -12,7 +12,11 @@ _EJEMPLO_ERROR = lambda codigo, mensaje: {  # noqa: E731
 
 _EJEMPLO_REQUEST = {
     "documento_titulo": "Introduccion a la Arquitectura de Redes VCN en OCI",
-    "documento_contenido": "La Virtual Cloud Network (VCN) es una red privada y personalizable en OCI...",
+    "documento_contenido": (
+        "La Virtual Cloud Network (VCN) es una red privada y personalizable en OCI. "
+        "Permite definir subredes y reglas de seguridad para controlar el tráfico. "
+        "Cada subred pertenece a una VCN y utiliza un rango de direcciones IP."
+    ),
     "perfil_destinatario": "Principiante",
     "formato_salida": "Flashcards",
     "nicho_sector": "General",
@@ -45,6 +49,9 @@ _EJEMPLO_RESPUESTA_200 = {
         "anclaje_fuente_score": 0.9,
         "claridad_pedagogica": "Alta",
         "observaciones": "Contenido respaldado por el documento fuente.",
+        "umbral_fidelidad": 0.7,
+        "requiere_revision": False,
+        "afirmaciones_no_respaldadas": [],
     },
     "almacenamiento_oci": {
         "bucket": "nuevamente-contenidos-educativos",
@@ -59,17 +66,24 @@ _EJEMPLO_RESPUESTA_200 = {
     response_model=OutputSchema,
     responses={
         200: {
-            "description": "Paquete educativo generado, validado y persistido.",
+            "description": "Paquete generado. Consultar evaluacion_calidad para advertencias y almacenamiento_oci para el estado de persistencia.",
             "content": {"application/json": {"example": _EJEMPLO_RESPUESTA_200}},
         },
         422: {
-            "description": "Entrada inválida (campo faltante o valor fuera de enum; el mensaje lista los valores válidos).",
+            "description": (
+                "Entrada inválida, contexto no encontrado o contenido insuficiente. "
+                "DOCUMENTO_INSUFICIENTE indica que el documento no alcanza "
+                "DOCUMENT_MIN_WORDS y no se ejecuta la generación. "
+                "CONTENIDO_INSUFICIENTE indica que faltan conceptos verificables."
+            ),
+            "model": ErrorResponseSchema,
             "content": _EJEMPLO_ERROR("ENTRADA_INVALIDA", "Campo 'perfil_destinatario': Input should be 'Principiante', ..."),
         },
         502: {
             "description": (
                 "Falla del LLM, vector store o autenticación con OCI Object Storage."
             ),
+            "model": ErrorResponseSchema,
             "content": {
                 "application/json": {
                     "examples": {
@@ -102,10 +116,6 @@ _EJEMPLO_RESPUESTA_200 = {
                     }
                 }
             },
-        },
-        501: {
-            "description": "Pipeline real aún no cableada en este entorno (USE_MOCK_LLM=false).",
-            "content": _EJEMPLO_ERROR("PIPELINE_NO_CONFIGURADA", "La pipeline de adaptación aún no está disponible en este entorno."),
         },
     },
     summary="Adapta un documento técnico a un formato educativo",

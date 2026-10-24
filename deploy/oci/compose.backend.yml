@@ -1,0 +1,180 @@
+name: nuevamente
+
+services:
+  demo_auth:
+    image: ${NUEVAMENTE_AUTH_IMAGE:?Defina NUEVAMENTE_AUTH_IMAGE}
+    restart: unless-stopped
+    init: true
+    user: "10003:10003"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.20
+    mem_limit: 128m
+    pids_limit: 64
+    environment:
+      DEMO_AUTH_PUBLIC_HOST: ${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST}
+    volumes:
+      - ${NUEVAMENTE_AUTH_SECRETS_DIR:-/etc/docker-platform/apps/nuevamente/auth-secrets}:/run/secrets/nuevamente-auth:ro,Z
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    expose:
+      - "8080"
+    networks:
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.nuevamente-access.entrypoints: websecure
+      traefik.http.routers.nuevamente-access.rule: Host(`${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST}`) && (Path(`/acceso`) || Path(`/salir`))
+      traefik.http.routers.nuevamente-access.priority: "100"
+      traefik.http.routers.nuevamente-access.middlewares: nuevamente-access-limit
+      traefik.http.routers.nuevamente-access.tls: "true"
+      traefik.http.routers.nuevamente-access.tls.certresolver: letsencrypt
+      traefik.http.routers.nuevamente-access.service: nuevamente-access
+      traefik.http.middlewares.nuevamente-access-limit.ratelimit.average: "20"
+      traefik.http.middlewares.nuevamente-access-limit.ratelimit.period: 1m
+      traefik.http.middlewares.nuevamente-access-limit.ratelimit.burst: "10"
+      traefik.http.services.nuevamente-access.loadbalancer.server.port: "8080"
+
+  backend:
+    image: ${NUEVAMENTE_BACKEND_IMAGE:?Defina NUEVAMENTE_BACKEND_IMAGE}
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.75
+    mem_limit: 3g
+    pids_limit: 256
+    env_file:
+      - ${NUEVAMENTE_BACKEND_ENV_FILE:-/etc/docker-platform/apps/nuevamente/runtime.env}
+    environment:
+      ENVIRONMENT: production
+      USE_MOCK_LLM: "false"
+      OCI_AUTH_MODE: instance_principal
+      CHROMA_PERSIST_DIRECTORY: /app/chroma_db
+    volumes:
+      - chroma_data:/app/chroma_db
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    expose:
+      - "8000"
+    networks:
+      - backend_internal
+      # Egreso hacia Gemini, OCI y metadata de Instance Principal.
+      - proxy
+    labels:
+      traefik.enable: "false"
+
+  frontend:
+    image: ${NUEVAMENTE_FRONTEND_IMAGE:?Defina NUEVAMENTE_FRONTEND_IMAGE}
+    restart: unless-stopped
+    init: true
+    user: "10002:10002"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.50
+    mem_limit: 512m
+    pids_limit: 256
+    environment:
+      API_BASE_URL: http://backend:8000/api/v1
+      LOGOUT_URL: /salir
+      STREAMLIT_SERVER_HEADLESS: "true"
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    depends_on:
+      backend:
+        condition: service_healthy
+      demo_auth:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    expose:
+      - "8501"
+    networks:
+      - backend_internal
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.nuevamente.entrypoints: web
+      traefik.http.routers.nuevamente.rule: Host(`${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con el dominio HTTPS sin esquema ni puerto}`)
+      traefik.http.routers.nuevamente.middlewares: nuevamente-https
+      traefik.http.routers.nuevamente.service: noop@internal
+      traefik.http.middlewares.nuevamente-https.redirectscheme.scheme: https
+      traefik.http.middlewares.nuevamente-https.redirectscheme.port: "443"
+      traefik.http.middlewares.nuevamente-https.redirectscheme.permanent: "true"
+      traefik.http.routers.nuevamente-secure.entrypoints: websecure
+      traefik.http.routers.nuevamente-secure.rule: Host(`${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con el dominio HTTPS sin esquema ni puerto}`)
+      traefik.http.routers.nuevamente-secure.tls: "true"
+      traefik.http.routers.nuevamente-secure.tls.certresolver: letsencrypt
+      traefik.http.routers.nuevamente-secure.middlewares: nuevamente-demo-auth
+      traefik.http.routers.nuevamente-secure.service: nuevamente
+      # El alias solo redirige; no sirve Streamlit ni pide credenciales.
+      traefik.http.routers.nuevamente-www.entrypoints: web
+      traefik.http.routers.nuevamente-www.rule: Host(`www.${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con el dominio HTTPS sin esquema ni puerto}`)
+      traefik.http.routers.nuevamente-www.middlewares: nuevamente-canonical
+      traefik.http.routers.nuevamente-www.service: noop@internal
+      traefik.http.routers.nuevamente-www-secure.entrypoints: websecure
+      traefik.http.routers.nuevamente-www-secure.rule: Host(`www.${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con el dominio HTTPS sin esquema ni puerto}`)
+      traefik.http.routers.nuevamente-www-secure.tls: "true"
+      traefik.http.routers.nuevamente-www-secure.tls.certresolver: letsencrypt
+      traefik.http.routers.nuevamente-www-secure.middlewares: nuevamente-canonical
+      traefik.http.routers.nuevamente-www-secure.service: noop@internal
+      traefik.http.middlewares.nuevamente-canonical.redirectregex.regex: '^https?://[^/]+/(.*)'
+      traefik.http.middlewares.nuevamente-canonical.redirectregex.replacement: https://${NUEVAMENTE_PUBLIC_HOST:?Defina NUEVAMENTE_PUBLIC_HOST con el dominio HTTPS sin esquema ni puerto}/$${1}
+      traefik.http.middlewares.nuevamente-canonical.redirectregex.permanent: "true"
+      traefik.http.middlewares.nuevamente-demo-auth.forwardauth.address: http://demo_auth:8080/verificar
+      traefik.http.middlewares.nuevamente-demo-auth.forwardauth.trustforwardheader: "false"
+      traefik.http.middlewares.nuevamente-demo-auth.forwardauth.preservelocationheader: "true"
+      traefik.http.services.nuevamente.loadbalancer.server.port: "8501"
+
+volumes:
+  chroma_data:
+    name: nuevamente-chroma-data
+
+networks:
+  backend_internal:
+    name: nuevamente-internal
+    internal: true
+  proxy:
+    external: true
+    name: proxy

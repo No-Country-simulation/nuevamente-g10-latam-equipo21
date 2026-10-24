@@ -1,3 +1,4 @@
+
 from typing import List
 
 from google import genai
@@ -15,9 +16,14 @@ class GeminiEmbeddingService:
     Servicio encargado de convertir textos en vectores numéricos
     utilizando el modelo de embeddings de Google Gemini.
 
-    Los embeddings generados se usarán para indexar documentos
-    en ChromaDB y posteriormente permitir búsqueda semántica.
+    Los embeddings generados se usan para indexar documentos
+    en ChromaDB y permitir búsquedas semánticas.
+
+    Los documentos se procesan en lotes de hasta 100 textos,
+    respetando el límite de Gemini.
     """
+
+    MAX_BATCH_SIZE = 100
 
     def __init__(
         self,
@@ -25,20 +31,18 @@ class GeminiEmbeddingService:
         model_name: str | None = None,
         client=None,
     ):
-        # Modelo de embeddings configurado en settings.
         self.model_name = (
             model_name
             or settings.GEMINI_EMBEDDING_MODEL_NAME
         )
 
-        # Permite utilizar un cliente falso en los tests
-        # sin realizar llamadas reales a Gemini.
+        # Permite utilizar un cliente falso en los tests.
         if client is not None:
             self.client = client
             return
 
-        # Si api_key es None, toma la clave del archivo .env.
-        # Si se pasa explícitamente "", debe considerarse inválida.
+        # Si api_key es None, utiliza la configuración.
+        # Una cadena vacía explícita se considera inválida.
         key = (
             settings.GEMINI_API_KEY
             if api_key is None
@@ -50,37 +54,35 @@ class GeminiEmbeddingService:
                 "No se configuró GEMINI_API_KEY."
             )
 
-        self.client = genai.Client(
-            api_key=key
-        )
+        self.client = genai.Client(api_key=key)
 
     def embed_documents(
         self,
         texts: List[str],
     ) -> List[List[float]]:
         """
-        Genera embeddings para una lista de textos.
-
-        Se utiliza RETRIEVAL_DOCUMENT porque estos textos
-        serán almacenados en ChromaDB para recuperación
-        semántica posterior.
+        Genera embeddings para documentos utilizando
+        RETRIEVAL_DOCUMENT.
         """
 
-        return self._embed(texts, task_type="RETRIEVAL_DOCUMENT")
+        return self._embed(
+            texts,
+            task_type="RETRIEVAL_DOCUMENT",
+        )
 
     def embed_query(
         self,
         text: str,
     ) -> List[float]:
         """
-        Genera el embedding de una consulta de búsqueda.
-
-        Se utiliza RETRIEVAL_QUERY (distinto de RETRIEVAL_DOCUMENT) porque Gemini recomienda
-        un task type específico para el lado consulta; mejora la calidad de la recuperación
-        frente a reutilizar el embedding de documento.
+        Genera el embedding de una consulta utilizando
+        RETRIEVAL_QUERY.
         """
 
-        return self._embed([text], task_type="RETRIEVAL_QUERY")[0]
+        return self._embed(
+            [text],
+            task_type="RETRIEVAL_QUERY",
+        )[0]
 
     def _embed(
         self,
@@ -88,7 +90,12 @@ class GeminiEmbeddingService:
         task_type: str,
     ) -> List[List[float]]:
         """
-        Lógica común de generación de embeddings para un `task_type` dado.
+        Genera embeddings en lotes de hasta 100 textos.
+
+        Garantiza:
+        - Cantidad de embeddings igual a la de textos.
+        - Conservación del orden original.
+        - Ningún resultado parcial ante errores.
         """
 
         if not texts:
@@ -104,29 +111,69 @@ class GeminiEmbeddingService:
                 "No se pueden generar embeddings de textos vacíos."
             )
 
-        try:
-            response = self.client.models.embed_content(
-                model=self.model_name,
-                contents=texts,
-                config=types.EmbedContentConfig(
-                    task_type=task_type
-                ),
-            )
+        embeddings: List[List[float]] = []
 
-            if not response.embeddings:
-                raise EmbeddingServiceError(
-                    "Gemini no devolvió embeddings."
-                )
-
-            return [
-                list(embedding.values)
-                for embedding in response.embeddings
+        for start in range(
+            0,
+            len(texts),
+            self.MAX_BATCH_SIZE,
+        ):
+            batch = texts[
+                start:start + self.MAX_BATCH_SIZE
             ]
 
-        except EmbeddingServiceError:
-            raise
+            batch_number = (
+                start // self.MAX_BATCH_SIZE
+            ) + 1
 
-        except Exception as exc:
-            raise EmbeddingServiceError(
-                f"Error generando embeddings: {exc}"
-            ) from exc
+            try:
+                response = self.client.models.embed_content(
+                    model=self.model_name,
+                    contents=batch,
+                    config=types.EmbedContentConfig(
+                        task_type=task_type,
+                    ),
+                )
+
+                if not response.embeddings:
+                    raise EmbeddingServiceError(
+                        f"Gemini no devolvió embeddings "
+                        f"para el lote {batch_number}."
+                    )
+
+                if len(response.embeddings) != len(batch):
+                    raise EmbeddingServiceError(
+                        f"Cantidad incorrecta de embeddings "
+                        f"en el lote {batch_number}: "
+                        f"esperados {len(batch)}, "
+                        f"recibidos {len(response.embeddings)}."
+                    )
+
+                batch_embeddings = []
+
+                for embedding in response.embeddings:
+                    if (
+                        embedding.values is None
+                        or len(embedding.values) == 0
+                    ):
+                        raise EmbeddingServiceError(
+                            f"Gemini devolvió un vector vacío "
+                            f"en el lote {batch_number}."
+                        )
+
+                    batch_embeddings.append(
+                        list(embedding.values)
+                    )
+
+                embeddings.extend(batch_embeddings)
+
+            except EmbeddingServiceError:
+                raise
+
+            except Exception as exc:
+                raise EmbeddingServiceError(
+                    f"Error generando embeddings "
+                    f"en el lote {batch_number}: {exc}"
+                ) from exc
+
+        return embeddings

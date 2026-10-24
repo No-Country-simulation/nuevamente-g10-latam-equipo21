@@ -22,7 +22,11 @@ from app.services.dependencies import get_adaptacion_service
 URL = "/api/v1/adaptar-contenido"
 PAYLOAD = {
     "documento_titulo": "Redes VCN en OCI",
-    "documento_contenido": "La VCN es una red privada configurable en Oracle Cloud.",
+    "documento_contenido": (
+        "La VCN es una red privada configurable en Oracle Cloud. "
+        "Permite definir subredes y reglas de seguridad para controlar el tráfico. "
+        "Cada subred pertenece a una VCN y utiliza un rango de direcciones IP."
+    ),
     "perfil_destinatario": "Principiante",
     "formato_salida": "Flashcards",
     "nicho_sector": "General",
@@ -177,6 +181,7 @@ def test_flag_mock_y_501_sin_cablear(monkeypatch):
     r = c.post(URL, json=PAYLOAD)
     assert r.status_code == 200 and "MOCK" in r.json()["evaluacion_calidad"]["observaciones"]
     monkeypatch.setattr(settings, "USE_MOCK_LLM", False)
+    monkeypatch.setattr(settings, "USE_MULTIAGENT", False)
     from app.services.mock_adaptacion_service import construir_respuesta_mock
 
     llamados = []
@@ -264,3 +269,64 @@ def test_verificador_pasa_doc_id_y_vector_store_compartidos():
     assert visto["documento_id"] == documento_id_desde_contenido(p.documento_contenido)
     assert visto["vector_store"] == "vs" and visto["llm_provider"] == "LLM"
     assert visto["contenido_adaptado"] == "CONTENIDO" and visto["perfil_destinatario"] == "Principiante"
+
+
+@pytest.mark.parametrize("formato", ["Tutorial", "Flashcards", "Quiz", "Resumen_Ejecutivo", "Guion_Clase"])
+def test_documento_breve_se_rechaza_antes_de_llamar_proveedores(monkeypatch, formato):
+    monkeypatch.setattr(settings, "DOCUMENT_MIN_WORDS", 30)
+    c, _ = make_client(
+        contexto=FakeContexto(error=AssertionError("No debe indexar")),
+        generador=FakeGenerador(error=AssertionError("No debe generar")),
+        storage=FakeStorage(error=AssertionError("No debe persistir")),
+    )
+    r = c.post(URL, json={**PAYLOAD, "documento_contenido": "La nube permite almacenar datos.", "formato_salida": formato})
+    assert r.status_code == 422
+    assert r.json()["error"]["codigo"] == "DOCUMENTO_INSUFICIENTE"
+    assert formato in r.json()["error"]["mensaje"]
+
+
+@pytest.mark.parametrize("score,claims", [
+    (0.69, []), (0.8, [{"item": 1, "texto": "La fuente no respalda esta afirmación."}]),
+])
+def test_politica_y_observaciones_llegan_a_la_respuesta_y_a_oci(monkeypatch, score, claims):
+    monkeypatch.setattr(settings, "FIDELITY_SCORE_THRESHOLD", 0.7)
+    stored = []
+
+    class VerificadorObservado:
+        def evaluar(self, payload, contenido, contexto):
+            return EvaluacionCalidadSchema(
+                anclaje_fuente_score=score, claridad_pedagogica="Media",
+                observaciones="Revisar la fuente.", afirmaciones_no_respaldadas=claims,
+            )
+
+    class StorageObservado(FakeStorage):
+        def guardar(self, payload, paquete):
+            stored.append(paquete)
+            return super().guardar(payload, paquete)
+
+    c, _ = make_client(verificador=VerificadorObservado(), storage=StorageObservado())
+    r = c.post(URL, json=PAYLOAD)
+    assert r.status_code == 200
+    quality = r.json()["evaluacion_calidad"]
+    assert quality["anclaje_fuente_score"] == score
+    assert quality["requiere_revision"] is True
+    assert quality["umbral_fidelidad"] == 0.7
+    assert quality["afirmaciones_no_respaldadas"] == claims
+    assert stored[0]["evaluacion_calidad"] == quality
+# --- NM-21: contenido insuficiente -> 422 (no 502) ---
+def test_contenido_insuficiente_para_metadatos_devuelve_422():
+    from app.services.adaptacion_adapters import MetadatosRealAdapter
+    from app.services.metadata_service import MetadatosInsuficientesError
+
+    def generar_insuficiente(**kwargs):
+        raise MetadatosInsuficientesError("sin conceptos verificables")
+
+    metadatos = MetadatosRealAdapter(llm_provider="LLM", generar=generar_insuficiente)
+    c, _ = make_client(metadatos=metadatos)
+
+    r = c.post(URL, json=PAYLOAD)
+
+    assert r.status_code == 422
+    body = r.json()
+    assert body["status"] == "error"
+    assert body["error"]["codigo"] == "CONTENIDO_INSUFICIENTE"

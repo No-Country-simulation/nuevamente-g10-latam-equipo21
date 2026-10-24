@@ -4,6 +4,7 @@ pydantic==2.13.5
 pydantic-settings==2.15.0
 python-dotenv==1.2.3
 pytest==9.1.1
+PyYAML==6.0.3
 httpx==0.28.1
 pypdf==6.19.0
 python-multipart==0.0.32
