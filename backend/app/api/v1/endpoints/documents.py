@@ -1,4 +1,3 @@
-import uuid
 import logging
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -24,6 +23,7 @@ from app.services.oci_storage_service import (
     OCIStorageService,
     get_oci_storage_service_factory,
 )
+from app.services.document_identity import documento_id_desde_contenido
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -45,8 +45,6 @@ async def extract_document_endpoint(
     suffix = Path(file.filename or "").suffix
     temporary_path = None
 
-    documento_id = str(uuid.uuid4())
-
     try:
         content = await file.read()
         with NamedTemporaryFile(delete=False, suffix=suffix) as temporary_file:
@@ -54,25 +52,26 @@ async def extract_document_endpoint(
             temporary_file.write(content)
 
         document = extract_document(temporary_path)
+        documento_id = documento_id_desde_contenido(document.text)
         metadata = replace(
             document.metadata,
             filename=file.filename or temporary_path.name,
         )
 
         objeto_id = None
-        status_upload = "pendiente"
+        status_upload = "error"
 
         def persist_original():
-            res = storage_service_factory().upload_original(
+            return storage_service_factory().upload_original(
                 filename=metadata.filename,
                 content=content,
                 content_type=file.content_type,
             )
-            return getattr(res, "objeto_id", res)
 
         try:
-            objeto_id = await run_in_threadpool(persist_original)
-            status_upload = "completado"
+            almacenamiento_original = await run_in_threadpool(persist_original)
+            objeto_id = almacenamiento_original.objeto_id
+            status_upload = almacenamiento_original.status_upload
         except OCIAuthenticationError:
             raise
         except Exception as error:
@@ -84,7 +83,7 @@ async def extract_document_endpoint(
 
         return {
             "documento_id": documento_id,
-            "objeto_id": objeto_id or metadata.filename,
+            "objeto_id": objeto_id,
             "status_upload": status_upload,
             "text": document.text,
             "pages": [asdict(p) for p in getattr(document, "pages", [])],

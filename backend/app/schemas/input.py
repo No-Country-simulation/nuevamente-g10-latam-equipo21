@@ -27,7 +27,14 @@ class DocumentoPaginaSchema(PublicSchema):
 class InputSchema(PublicSchema):
     documento_id: Optional[StrictStr] = Field(
         default=None,
-        description="Identificador único del documento original extraído previamente",
+        min_length=1,
+        description="Identificador estable devuelto por POST /documents/extract",
+    )
+
+    objeto_origen_id: Optional[StrictStr] = Field(
+        default=None,
+        min_length=1,
+        description="Objeto OCI del documento original devuelto por POST /documents/extract",
     )
 
     documento_titulo: StrictStr = Field(

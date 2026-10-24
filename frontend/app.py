@@ -96,7 +96,13 @@ def run_adaptation(
 
     payload = {
         "documento_id": extracted.get("documento_id"),
+        "documento_titulo": title.strip(),
         "documento_contenido": content,
+        "objeto_origen_id": (
+            extracted.get("objeto_id")
+            if extracted.get("status_upload") == "completado"
+            else None
+        ),
         **options,
     }
     pages = extracted.get("pages") or []

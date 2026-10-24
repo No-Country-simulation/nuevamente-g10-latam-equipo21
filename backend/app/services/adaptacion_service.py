@@ -29,6 +29,7 @@ from app.schemas.output import (
     MetadatosSchema,
     OutputSchema,
 )
+from app.services.document_identity import documento_id_desde_contenido
 
 logger = logging.getLogger("nuevamente.adaptacion")
 
@@ -160,6 +161,9 @@ class AdaptacionService:
                 error_sanitizado(exc),
             )
             return AlmacenamientoOCISchema(
+                documento_id=payload.documento_id
+                or documento_id_desde_contenido(payload.documento_contenido),
+                objeto_origen_id=payload.objeto_origen_id,
                 bucket=settings.OCI_BUCKET_NAME,
                 objeto_id=OBJETO_NO_PERSISTIDO,
                 status_upload="error",

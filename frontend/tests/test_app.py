@@ -78,7 +78,15 @@ def test_supported_file_enables_controls_and_prefills_title():
 def test_generation_extracts_then_adapts_and_shows_success_message(monkeypatch):
     calls = []
     responses = [
-       FakeResponse({"text": "Texto fuente", "metadata": {}, "documento_id": "doc-test-123"}),
+       FakeResponse(
+          {
+             "text": "Texto fuente",
+             "metadata": {},
+             "documento_id": "doc-test-123",
+             "objeto_id": "originales/lesson.md",
+             "status_upload": "completado",
+          }
+       ),
        FakeResponse(
           {
              "status": "exito",
@@ -115,7 +123,9 @@ def test_generation_extracts_then_adapts_and_shows_success_message(monkeypatch):
     assert calls[0][2]["files"]["file"][:2] == ("lesson.md", b"# Lesson")
     assert calls[1][2]["json"] == {
        "documento_id": "doc-test-123",
+       "documento_titulo": "Lección adaptada",
        "documento_contenido": "Texto fuente",
+       "objeto_origen_id": "originales/lesson.md",
        "perfil_destinatario": "Principiante",
        "formato_salida": "Tutorial",
        "nicho_sector": "General",

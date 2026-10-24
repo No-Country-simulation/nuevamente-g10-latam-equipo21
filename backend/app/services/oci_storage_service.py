@@ -18,6 +18,7 @@ from app.core.errors import OCIAuthenticationError
 from app.core.request_context import get_request_id
 from app.schemas.input import InputSchema
 from app.schemas.output import AlmacenamientoOCISchema, OutputSchema
+from app.services.document_identity import documento_id_desde_contenido
 
 
 logger = logging.getLogger(__name__)
@@ -101,8 +102,13 @@ class OCIStorageService:
         response: OutputSchema,
     ) -> OutputSchema:
         object_name = build_generated_object_name(payload)
+        documento_id = (
+            payload.documento_id
+            or documento_id_desde_contenido(payload.documento_contenido)
+        )
         completed_storage = AlmacenamientoOCISchema(
-            documento_id=payload.documento_id,
+            documento_id=documento_id,
+            objeto_origen_id=payload.objeto_origen_id,
             bucket=self._bucket_name,
             objeto_id=object_name,
             status_upload="completado",
@@ -112,7 +118,8 @@ class OCIStorageService:
             object_name=object_name,
             content=package.model_dump_json().encode("utf-8"),
             content_type="application/json",
-            documento_id=payload.documento_id,
+            documento_id=documento_id,
+            objeto_origen_id=payload.objeto_origen_id,
         )
         return response.model_copy(update={"almacenamiento_oci": upload})
 
@@ -123,6 +130,7 @@ class OCIStorageService:
         content: bytes,
         content_type: str,
         documento_id: str | None = None,
+        objeto_origen_id: str | None = None,
     ) -> AlmacenamientoOCISchema:
         try:
             self._client.put_object(
@@ -136,10 +144,9 @@ class OCIStorageService:
         except oci.exceptions.ServiceError as error:
             if error.status in (401, 403):
                 logger.error(
-                    "Error de autenticación o permisos en OCI (%s) [request_id=%s]: %s",
-                    error.status,
+                    "Error de autenticación o permisos en OCI (%s) [request_id=%s].",
+                    type(error).__name__,
                     get_request_id(),
-                    error.message,
                 )
                 raise OCIAuthenticationError() from error
 
@@ -161,6 +168,7 @@ class OCIStorageService:
 
         return AlmacenamientoOCISchema(
             documento_id=documento_id,
+            objeto_origen_id=objeto_origen_id,
             bucket=self._bucket_name,
             objeto_id=object_name,
             status_upload=status_upload,
@@ -189,12 +197,28 @@ def _build_api_key_config(app_settings: Settings) -> dict[str, str]:
 
 def build_object_storage_client(app_settings: Settings) -> ObjectStorageClientProtocol:
     if app_settings.OCI_AUTH_MODE == "instance_principal":
-        signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
-        return oci.object_storage.ObjectStorageClient(config={}, signer=signer)
+        try:
+            signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+            return oci.object_storage.ObjectStorageClient(config={}, signer=signer)
+        except Exception as error:
+            logger.error(
+                "No se pudo inicializar OCI Object Storage (%s) [request_id=%s].",
+                type(error).__name__,
+                get_request_id(),
+            )
+            raise OCIAuthenticationError() from error
 
     config = _build_api_key_config(app_settings)
-    oci.config.validate_config(config)
-    return oci.object_storage.ObjectStorageClient(config)
+    try:
+        oci.config.validate_config(config)
+        return oci.object_storage.ObjectStorageClient(config)
+    except Exception as error:
+        logger.error(
+            "No se pudo inicializar OCI Object Storage (%s) [request_id=%s].",
+            type(error).__name__,
+            get_request_id(),
+        )
+        raise OCIAuthenticationError() from error
 
 
 def get_oci_storage_service() -> OCIStorageService:

@@ -70,7 +70,11 @@ class EvaluacionCalidadSchema(PublicSchema):
 class AlmacenamientoOCISchema(PublicSchema):
     documento_id: Optional[StrictStr] = Field(
         default=None,
-        description="Identificador único del documento original de origen",
+        description="Identificador estable del documento original",
+    )
+    objeto_origen_id: Optional[StrictStr] = Field(
+        default=None,
+        description="Objeto OCI del documento original, si fue persistido",
     )
     bucket: StrictStr = Field(
         ...,
@@ -82,7 +86,7 @@ class AlmacenamientoOCISchema(PublicSchema):
         min_length=1,
     )
 
-    status_upload: Literal["completado", "fallido", "error"]
+    status_upload: Literal["completado", "error"]
 
 
 class OutputSchema(PublicSchema):
