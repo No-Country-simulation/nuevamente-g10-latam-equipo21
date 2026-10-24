@@ -14,6 +14,7 @@ Mantén:
 - el mismo perfil del destinatario;
 - el mismo nicho;
 - el mismo nivel de detalle;
+- la cantidad de ítems y la cobertura de todos los temas del contexto recuperado;
 - el contenido estrictamente respaldado por el contexto recuperado.
 
 La respuesta debe ser una versión completa, no un parche ni una lista de cambios.
