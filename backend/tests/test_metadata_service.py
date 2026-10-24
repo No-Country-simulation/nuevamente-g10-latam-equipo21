@@ -257,37 +257,27 @@ def test_prefiere_conceptos_que_aparecen_en_los_items():
     assert meta.conceptos_clave == ["VCN", "Subredes", "Internet Gateway"]
 
 
-def test_devuelve_solo_los_conceptos_que_aparecen_en_los_items():
-    llm = LLMFalso(
-        MetadatosLLM(
-            conceptos_clave=["VCN", "Subredes", "Internet Gateway", "Security Lists"],
-            prerrequisitos=[],
-        )
+def test_dos_conceptos_en_los_items_no_alcanzan_el_minimo():
+    malo = MetadatosLLM(
+        conceptos_clave=["VCN", "Subredes", "Internet Gateway", "Security Lists"],
+        prerrequisitos=[],
     )
-    meta = _generar(llm, formato="Tutorial", contenido=_contenido_con_textos("Solo se habla de la VCN."))
-    assert meta.conceptos_clave == ["VCN"]
-    assert llm.llamadas == 1
-
-
-def test_devuelve_dos_conceptos_si_solo_dos_aparecen_en_los_items():
-    llm = LLMFalso(
-        MetadatosLLM(
-            conceptos_clave=["VCN", "Subredes", "Internet Gateway", "Security Lists"],
-            prerrequisitos=[],
-        )
-    )
-    meta = _generar(llm, formato="Tutorial", contenido=_contenido_con_textos("La VCN se divide en subredes."))
-    assert meta.conceptos_clave == ["VCN", "Subredes"]
-    assert llm.llamadas == 1
+    llm = LLMFalso(malo, malo)
+    contenido = _contenido_con_textos("La VCN se divide en subredes.")
+    with pytest.raises(MetadatosInsuficientesError):
+        _generar(llm, formato="Tutorial", contenido=contenido)
+    assert llm.llamadas == 2
 
 
 def test_concepto_calza_con_las_palabras_en_otro_orden():
-    llm = LLMFalso(MetadatosLLM(conceptos_clave=["Internet Gateway"], prerrequisitos=[]))
-    meta = _generar(
-        llm, formato="Tutorial", contenido=_contenido_con_textos("Configura el gateway de internet de la VCN.")
+    llm = LLMFalso(
+        MetadatosLLM(conceptos_clave=["VCN", "Subredes", "Internet Gateway"], prerrequisitos=[])
     )
-    assert meta.conceptos_clave == ["Internet Gateway"]
-
+    contenido = _contenido_con_textos(
+        "Configura el gateway de internet de la VCN.", "Las subredes de la VCN."
+    )
+    meta = _generar(llm, formato="Tutorial", contenido=contenido)
+    assert meta.conceptos_clave == ["VCN", "Subredes", "Internet Gateway"]
 
 def test_concepto_con_palabras_repartidas_en_items_distintos_no_calza():
     malo = MetadatosLLM(conceptos_clave=["Internet Gateway"], prerrequisitos=[])

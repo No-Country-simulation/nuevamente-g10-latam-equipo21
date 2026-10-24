@@ -49,10 +49,7 @@ MULTIPLICADOR_POR_FORMATO: dict[FormatoSalida, float] = {
 
 # --- Extracción con LLM ----------------------------------------------------------------------
 MIN_CONCEPTOS = 3
-# NM-33: minimo de conceptos que deben aparecer en algun item. El prompt sigue pidiendo 3 a 8,
-# pero el criterio del ticket es que todo concepto listado este desarrollado, asi que se
-# devuelven los que haya (el schema publico exige min_length=1).
-MIN_CONCEPTOS_EN_ITEMS = 1
+
 
 _PALABRAS_VACIAS = frozenset(
     {"de", "del", "la", "el", "los", "las", "y", "e", "en", "a", "un", "una",
@@ -242,7 +239,7 @@ def generar_metadatos_aprendizaje(
             for c in _filtrar_conceptos(bruto.conceptos_clave, documento_normalizado)
             if _aparece_en_algun_item(_normalizar(c), items_normalizados)
         ]
-        if len(conceptos) >= MIN_CONCEPTOS_EN_ITEMS:
+        if len(conceptos) >= MIN_CONCEPTOS:
             prerrequisitos = _filtrar_prerrequisitos(bruto.prerrequisitos, documento_normalizado)
             break
         logger.warning(
