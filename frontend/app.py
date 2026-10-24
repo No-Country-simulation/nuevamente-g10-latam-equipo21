@@ -9,9 +9,16 @@ from components.error_display import render_error
 from components.loading_indicator import loading_indicator
 from components.package_result import render_package_result
 from components.sidebar import render_adaptation_options
-from services.api_client import APIClientError, adapt_document, extract_document
+from services.api_client import (
+    APIClientError,
+    APIConnectionError,
+    adapt_document,
+    extract_document,
+)
 from components.download_json import render_json_download
+from components.download_exports import render_export_buttons
 from utils.session_state import init_session_state
+from utils.quality import requires_review
 
 
 FRONTEND_DIR = Path(__file__).resolve().parent
@@ -20,6 +27,7 @@ API_BASE_URL = os.getenv(
     "API_BASE_URL",
     "http://localhost:8000/api/v1",
 ).rstrip("/")
+LOGOUT_URL = os.getenv("LOGOUT_URL", "").strip()
 
 
 def _timeout_from_environment(name: str, default: int) -> int:
@@ -54,6 +62,22 @@ def load_styles() -> None:
             f"<style>{stylesheet.read_text(encoding='utf-8')}</style>",
             unsafe_allow_html=True,
         )
+
+
+_ESTADO_API = {
+    None: "Servicio de adaptación",
+    True: "API conectada",
+    False: "Sin conexión con la API",
+}
+
+
+def render_status_footnote() -> None:
+    """Pie de estado de la API. Nunca expone la URL interna (NM-38)."""
+    label = _ESTADO_API.get(st.session_state.get("api_status"))
+    st.markdown(
+        f'<div class="api-footnote"><span class="status-dot"></span> {label}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def run_adaptation(
@@ -98,6 +122,7 @@ has_source_document = (
 )
 options = render_adaptation_options(
     has_source_document=has_source_document,
+    logout_url=LOGOUT_URL,
 )
 st.session_state["loaded_document"] = source_document
 st.session_state["selected_parameters"] = options.copy()
@@ -159,13 +184,15 @@ if submitted:
         st.session_state["is_loading"] = True
         try:
             with loading_indicator(
-                "Extrayendo el documento y preparando el material..."
+                "Extrayendo el documento y preparando el material. "
+                "Los documentos largos pueden tardar más de un minuto..."
             ):
                 result = run_adaptation(
                     uploaded_file,
                     document_title,
                     options,
                 )
+            st.session_state["api_status"] = True
 
             if result.get("status") != "exito":
                 error = result.get("error")
@@ -178,9 +205,15 @@ if submitted:
                 st.session_state["last_response"] = result
                 st.session_state["document_title"] = document_title.strip()
                 st.session_state["source_filename"] = uploaded_file.name
-                st.success("El contenido educativo se generó correctamente.")
+                if requires_review(result.get("evaluacion_calidad", {})) is False:
+                    st.success("El contenido educativo se generó correctamente.")
 
+        except APIConnectionError as error:
+            st.session_state["api_status"] = False
+            render_error(error.error)
         except APIClientError as error:
+            # La API respondió con un error (p. ej. validación): la conexión funciona.
+            st.session_state["api_status"] = True
             render_error(error.error)
         finally:
             st.session_state["is_loading"] = False
@@ -197,10 +230,12 @@ if result and result.get("status") == "exito":
             titulo_documento=st.session_state.get("document_title"),
             archivo_origen=st.session_state.get("source_filename"),
         )
+        render_export_buttons(
+            result,
+            titulo_documento=st.session_state.get("document_title"),
+            archivo_origen=st.session_state.get("source_filename"),
+        )
 else:
     st.caption("El contenido generado aparecerá aquí después de la adaptación.")
 
-st.markdown(
-    f'<div class="api-footnote"><span class="status-dot"></span> API · {API_BASE_URL}</div>',
-    unsafe_allow_html=True,
-)
+render_status_footnote()
