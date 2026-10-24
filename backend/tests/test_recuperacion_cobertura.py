@@ -50,6 +50,7 @@ def _frag(chunk_id, indice=None, texto=None):
     metadatos = {} if indice is None else {"chunk_index": indice}
     return SimpleNamespace(
         chunk_id=chunk_id,
+        documento_id="doc",
         score=0.9,
         metadatos=metadatos,
         texto=texto if texto is not None else f"texto {chunk_id}",
@@ -239,3 +240,66 @@ def test_el_cupo_se_acota_por_presupuesto_de_contexto(monkeypatch):
     # Sin acotar saldrian 4 por ventana (40 en total). Con presupuesto, mucho menos.
     assert len(elegidos) < 40
     assert len(elegidos) <= 10
+
+
+def _adapter_chunks_desiguales():
+    """40 chunks en 10 ventanas: los de la primera zona son chicos y el resto, de 1.000 caracteres."""
+    estado = {"ventana": -1}
+
+    def respuestas(consulta, top_k):
+        estado["ventana"] += 1
+        lo = estado["ventana"] * 4
+        return [
+            _frag(f"c{j}", j, "x" * (200 if j < 4 else 1000))
+            for j in range(lo, lo + 4)
+        ][:top_k]
+
+    return _adapter(respuestas, total_chunks=40)
+
+
+def _configurar_presupuesto(monkeypatch):
+    monkeypatch.setattr(settings, "RETRIEVAL_MAX_VENTANAS", 10)
+    monkeypatch.setattr(settings, "RETRIEVAL_VENTANA_CANDIDATOS", 8)
+    monkeypatch.setattr(settings, "RETRIEVAL_FRAGMENTOS_POR_VENTANA", 1)
+    monkeypatch.setattr(settings, "RETRIEVAL_MAX_CONTEXT_TOKENS", 6000)
+
+
+def test_el_presupuesto_de_contexto_es_global_y_cubre_la_ultima_zona(monkeypatch):
+    """NM-33 (review de Leandro): ventanas posteriores con chunks mas grandes que la primera."""
+    from app.services.retrieval_service import contar_tokens_aproximado, ensamblar_contexto
+
+    _configurar_presupuesto(monkeypatch)
+    documento = _documento_largo()
+    consultas = construir_consultas("titulo", documento)
+    assert len(consultas) == 10  # si cambia el calculo de ventanas, ajustar el escenario
+
+    adapter, _ = _adapter_chunks_desiguales()
+    elegidos = adapter._recuperar_por_ventanas(consultas, "doc")
+
+    # 1. Todo lo elegido cabe en el contexto real, sin superar el limite.
+    texto = ensamblar_contexto(elegidos)
+    assert contar_tokens_aproximado(texto) <= settings.RETRIEVAL_MAX_CONTEXT_TOKENS
+    assert all(f"chunk={f.chunk_id}" in texto for f in elegidos)
+
+    # 2. Hubo que recortar (el escenario realmente excede el presupuesto): 40 chunks no caben.
+    assert len(elegidos) < 40
+
+    # 3. Cobertura: la ultima zona ([36, 40)) y la primera aportan al menos un fragmento.
+    indices = [f.metadatos["chunk_index"] for f in elegidos]
+    assert any(i >= 36 for i in indices)
+    assert any(i < 4 for i in indices)
+
+
+def test_fuentes_coincide_con_lo_que_entra_al_contexto(monkeypatch):
+    from app.services.retrieval_service import ensamblar_contexto
+
+    _configurar_presupuesto(monkeypatch)
+    adapter, _ = _adapter_chunks_desiguales()
+    adapter._ensamblar = ensamblar_contexto  # el real: corta por presupuesto
+    # Con el real, un fragmento queda en el contexto si su cabecera aparece en el texto.
+    ctx = adapter.obtener_contexto(_payload(_documento_largo()))
+
+    ids_fuentes = [f.chunk_id for f in ctx.fuentes]
+    assert ids_fuentes
+    assert all(f"chunk={cid}]" in ctx.texto or f"chunk={cid} " in ctx.texto for cid in ids_fuentes)
+    assert ctx.texto.count("[Fuente:") == len(ids_fuentes)

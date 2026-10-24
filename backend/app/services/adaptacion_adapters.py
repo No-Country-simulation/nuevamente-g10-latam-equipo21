@@ -152,8 +152,9 @@ class ContextoRealAdapter:
         por_ventana = max(1, settings.RETRIEVAL_FRAGMENTOS_POR_VENTANA, cupo_base)
         candidatos_k = max(settings.RETRIEVAL_VENTANA_CANDIDATOS, previo, por_ventana)
 
-        vistos: set[str] = set()
-        unidos = []
+        from app.services.retrieval_service import fragmentos_que_caben
+
+        zonas: list[list] = []
         for i, consulta in enumerate(consultas):
             candidatos = self._recuperar(
                 consulta=consulta,
@@ -161,17 +162,6 @@ class ContextoRealAdapter:
                 documento_id=doc_id,
                 top_k=candidatos_k,
             )
-            if i == 0 and candidatos:
-                # NM-33: acota el cupo al presupuesto de contexto con el tamaño real de los fragmentos.
-                from app.services.retrieval_service import contar_tokens_aproximado
-
-                medio = sum(contar_tokens_aproximado(f.texto) for f in candidatos) / len(candidatos)
-                caben = max(1, int(settings.RETRIEVAL_MAX_CONTEXT_TOKENS // (medio + 20)))  # 20: cabecera [Fuente: ...] y separadores (estimado)
-                por_ventana = max(
-                    1,
-                    settings.RETRIEVAL_FRAGMENTOS_POR_VENTANA,
-                    math.ceil(min(total_chunks, caben) / ventanas),
-                )
             lo = i * total_chunks // ventanas
             hi = (i + 1) * total_chunks // ventanas
             en_rango = [
@@ -180,22 +170,37 @@ class ContextoRealAdapter:
             ]
             hay_indices = any(_chunk_index(f) is not None for f in candidatos)
             if en_rango:
-                elegidos = sorted(en_rango[:por_ventana], key=_chunk_index)
+                zonas.append(en_rango[:por_ventana])
             elif hay_indices:
                 # Hay indices, pero ninguno cae en esta zona: no se rellena con otras zonas.
                 logger.warning(
                     "Ventana %d/%d sin candidatos en el rango de chunks [%d, %d)",
                     i + 1, ventanas, lo, hi,
                 )
-                elegidos = []
+                zonas.append([])
             else:
-                elegidos = candidatos[:previo]
-            for fragmento in elegidos:
+                zonas.append(candidatos[:previo])
+
+        def _orden(f):
+            idx = _chunk_index(f)
+            return idx if idx is not None else 0
+
+        # NM-33: presupuesto global. Se reparte por rondas (el mejor de cada zona, luego el
+        # segundo, etc.) y solo se acepta lo que sigue cabiendo en el contexto final.
+        elegidos: list = []
+        vistos: set[str] = set()
+        for ronda in range(max((len(z) for z in zonas), default=0)):
+            for zona in zonas:
+                if ronda >= len(zona):
+                    continue
+                fragmento = zona[ronda]
                 if fragmento.chunk_id in vistos:
                     continue
-                vistos.add(fragmento.chunk_id)
-                unidos.append(fragmento)
-        return unidos
+                prueba = sorted([*elegidos, fragmento], key=_orden)
+                if len(fragmentos_que_caben(prueba)) == len(prueba):
+                    elegidos = prueba
+                    vistos.add(fragmento.chunk_id)
+        return elegidos
 
     def obtener_contexto(self, payload) -> ContextoRecuperado:
         self._init_real()
@@ -218,6 +223,8 @@ class ContextoRealAdapter:
             )
         else:
             fragmentos = self._recuperar_por_ventanas(consultas, doc_id)
+        from app.services.retrieval_service import fragmentos_que_caben
+        fragmentos = fragmentos_que_caben(fragmentos)
         texto = self._ensamblar(fragmentos) if fragmentos else ""
         fuentes = [
             FuenteContexto(

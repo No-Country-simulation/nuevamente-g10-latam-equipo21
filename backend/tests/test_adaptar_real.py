@@ -213,7 +213,7 @@ def _payload():
     return SimpleNamespace(documento_titulo="Titulo", documento_contenido="contenido largo " * 5)
 
 def test_contexto_indexa_si_no_existe_y_arma_fuentes():
-    frag = SimpleNamespace(chunk_id="c9", score=0.8, metadatos={"pagina": 3})
+    frag = SimpleNamespace(chunk_id="c9", documento_id="doc", score=0.8, metadatos={"pagina": 3}, texto="texto c9")
     chroma = FakeChroma(0)
     a, ll = _adapter(chroma, [frag])
     ctx = a.obtener_contexto(_payload())
@@ -224,7 +224,7 @@ def test_contexto_indexa_si_no_existe_y_arma_fuentes():
 
 def test_contexto_indexa_con_las_paginas_reales_del_payload():
     """Con `documento_paginas`, el chunker recibe las páginas reales y `pagina` refleja el origen."""
-    frag = SimpleNamespace(chunk_id="c9", score=0.8, metadatos={"pagina": 2})
+    frag = SimpleNamespace(chunk_id="c9", documento_id="doc", score=0.8, metadatos={"pagina": 2}, texto="texto c9")
     chroma = FakeChroma(0)
     a, ll = _adapter(chroma, [frag])
     payload = SimpleNamespace(
