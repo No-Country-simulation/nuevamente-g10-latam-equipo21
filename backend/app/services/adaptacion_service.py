@@ -21,6 +21,7 @@ from app.core.config import settings
 from app.core.errors import AppError, LLMError, SinContextoRelevanteError, VectorStoreError
 from app.core.request_context import get_request_id
 from app.core.log_sanitizer import error_sanitizado
+from app.services.quality_policy import aplicar_politica_calidad, validar_suficiencia_documento
 from app.schemas.input import InputSchema
 from app.schemas.output import (
     AlmacenamientoOCISchema,
@@ -93,6 +94,7 @@ class AdaptacionService:
         self._storage = storage
 
     def adaptar(self, payload: InputSchema) -> OutputSchema:
+        validar_suficiencia_documento(payload)
         rid = get_request_id()
 
         ctx = self._paso("contexto", VectorStoreError, lambda: self._contexto.obtener_contexto(payload))
@@ -102,6 +104,7 @@ class AdaptacionService:
             raise SinContextoRelevanteError()
         contenido = self._paso("generacion", LLMError, lambda: self._generador.generar(payload, ctx))
         evaluacion = self._paso("fidelidad", LLMError, lambda: self._verificador.evaluar(payload, contenido, ctx))
+        evaluacion = aplicar_politica_calidad(evaluacion)
         metadatos = self._paso("metadatos", LLMError, lambda: self._metadatos.generar(payload, contenido))
 
         almacenamiento = self._persistir(payload, metadatos, contenido, evaluacion)

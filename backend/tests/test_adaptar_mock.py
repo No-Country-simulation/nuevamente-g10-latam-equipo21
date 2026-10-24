@@ -74,6 +74,17 @@ def test_responde_estructura_completa_por_formato(formato, campos_item_esperados
         assert "tipo_item" not in item
 
 
+def test_mock_quiz_incluye_cuatro_preguntas_con_respuestas_validas():
+    payload = {**PAYLOAD_BASE, "formato_salida": "Quiz"}
+    resp = client.post(ENDPOINT, json=payload)
+
+    assert resp.status_code == 200
+    items = resp.json()["contenido_adaptado"]["items"]
+    assert len(items) == 4
+    assert len({item["pregunta"] for item in items}) == 4
+    assert all(item["respuesta_correcta"] in item["opciones"] for item in items)
+
+
 def test_entrada_invalida_devuelve_shape_de_error_del_contrato():
     payload = {**PAYLOAD_BASE, "formato_salida": "Formato_Que_No_Existe"}
     resp = client.post(ENDPOINT, json=payload)

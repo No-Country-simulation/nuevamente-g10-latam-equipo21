@@ -43,6 +43,8 @@
 .empty-step { margin-left: auto; white-space: nowrap; }
 .api-footnote { display: flex; align-items: center; gap: .45rem; padding-top: 1.2rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .7rem; overflow-wrap: anywhere; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); }
+.logout-link { display: inline-flex; align-items: center; margin-top: .9rem; padding: .42rem .8rem; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: .76rem; font-weight: 700; text-decoration: none; }
+.logout-link:hover { border-color: var(--teal); color: var(--teal); }
 .result-label { margin-top: 2rem; }
 .intro-copy { margin: .8rem 0 1.2rem; padding: .9rem 1rem; border-left: 3px solid var(--leaf); background: #eaf1e7; color: #34443a; line-height: 1.65; }
 .item-index { color: var(--teal); }

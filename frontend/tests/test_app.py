@@ -1,10 +1,61 @@
 from pathlib import Path
+from contextlib import contextmanager
 
 import requests
+import pytest
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
+
+
+@pytest.mark.parametrize("score,claims", [
+	(0.69, []),
+	(0.8, [{"item": 1, "texto": "Respuesta sin respaldo en la fuente."}]),
+])
+def test_quality_warning_survives_rerun_and_does_not_show_success(monkeypatch, score, claims):
+	from tests.test_package_result import FORMAT_CASES, make_result
+	_, item, _ = FORMAT_CASES[1]
+	result = make_result("Quiz", item, "completado")
+	result["evaluacion_calidad"].update(
+		anclaje_fuente_score=score, requiere_revision=True,
+		afirmaciones_no_respaldadas=claims,
+	)
+	responses = [FakeResponse({"text": "Fuente de prueba"}), FakeResponse(result)]
+	monkeypatch.setattr(requests, "request", lambda *args, **kwargs: responses.pop(0))
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click().run()
+	for _ in range(2):
+		assert not app.exception
+		assert any("requiere revisión" in w.value for w in app.warning)
+		assert not any("generó correctamente" in s.value for s in app.success)
+		assert not any("Contenido guardado" in s.value for s in app.success)
+		assert app.session_state["last_response"] == result
+		assert any('"requiere_revision": true' in c.value for c in app.code)
+		app.run()
+	assert not responses  # los reruns no regeneran
+
+
+def test_insufficient_document_displays_warning_without_generated_result(monkeypatch):
+	responses = [
+		FakeResponse({"text": "Fuente breve."}),
+		FakeResponse({"status": "error", "error": {
+			"codigo": "DOCUMENTO_INSUFICIENTE", "mensaje": "Agrega más información del documento original."
+		}}, ok=False),
+	]
+	monkeypatch.setattr(requests, "request", lambda *args, **kwargs: responses.pop(0))
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click().run()
+	assert not app.exception
+	assert not app.error
+	assert any("Agrega más información" in w.value for w in app.warning)
+	assert app.session_state["last_response"] is None
+	assert app.session_state["is_loading"] is False
 
 
 class FakeResponse:
@@ -62,76 +113,122 @@ def test_supported_file_enables_controls_and_prefills_title():
     app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
     app.run()
 
-    assert any("Documento cargado: lesson.md" in message.value for message in app.success)
+    assert any(
+        "Documento cargado: lesson.md" in message.value
+        and "pendiente de validación" in message.value
+        for message in app.info
+    )
     assert all(not selectbox.disabled for selectbox in app.selectbox)
     assert app.text_input[0].value == "lesson"
     assert not app.button[0].disabled
     assert app.session_state["loaded_document"].name == "lesson.md"
     assert app.session_state["selected_parameters"] == {
-       "perfil_destinatario": "Principiante",
-       "formato_salida": "Tutorial",
-       "nicho_sector": "General",
-       "nivel_detalle": "Didactico",
+        "perfil_destinatario": "Principiante",
+        "formato_salida": "Tutorial",
+        "nicho_sector": "General",
+        "nivel_detalle": "Didactico",
     }
+
+
+def test_loading_indicator_warns_processing_may_take_up_to_two_minutes(monkeypatch):
+    messages = []
+    responses = [
+        FakeResponse({"text": "Texto fuente"}),
+        FakeResponse(
+            {
+                "status": "error",
+                "error": {
+                    "codigo": "ERROR_TEST",
+                    "mensaje": "Servicio no disponible",
+                },
+            }
+        ),
+    ]
+
+    @contextmanager
+    def capture_spinner(message):
+        messages.append(message)
+        yield
+
+    monkeypatch.setattr(st, "spinner", capture_spinner)
+    monkeypatch.setattr(requests, "request", lambda *args, **kwargs: responses.pop(0))
+    app = _app()
+    app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+    app.run()
+    app.button[0].click().run()
+
+    assert not app.exception
+    assert len(messages) == 1
+    assert "puede tomar hasta 2 minutos" in messages[0]
 
 
 def test_generation_extracts_then_adapts_and_shows_success_message(monkeypatch):
     calls = []
     responses = [
-       FakeResponse(
-          {
-             "text": "Texto fuente",
-             "metadata": {},
-             "documento_id": "doc-test-123",
-             "objeto_id": "originales/lesson.md",
-             "status_upload": "completado",
-          }
-       ),
-       FakeResponse(
-          {
-             "status": "exito",
-             "metadatos": {
-                "formato_generado": "Tutorial",
-                "tiempo_estimado_estudio_minutos": 10,
-                "conceptos_clave": [],
-             },
-             "contenido_adaptado": {
-                "titulo": "Resultado conservado",
-                "introduccion_contextualizada": "Introducción",
-                "items": [],
-             },
-             "evaluacion_calidad": {},
-             "almacenamiento_oci": {},
-          }
-       ),
+        FakeResponse(
+            {
+                "text": "Texto fuente",
+                "metadata": {},
+                "documento_id": "doc-test-123",
+                "objeto_id": "originales/lesson.md",
+                "status_upload": "completado",
+            }
+        ),
+        FakeResponse(
+            {
+                "status": "exito",
+                "metadatos": {
+                    "formato_generado": "Tutorial",
+                    "tiempo_estimado_estudio_minutos": 10,
+                    "conceptos_clave": [],
+                },
+                "contenido_adaptado": {
+                    "titulo": "Resultado conservado",
+                    "introduccion_contextualizada": "Introducción",
+                    "items": [],
+                },
+                "evaluacion_calidad": {
+                    "anclaje_fuente_score": 1.0,
+                    "umbral_fidelidad": 0.7,
+                    "requiere_revision": False,
+                },
+                "almacenamiento_oci": {},
+            }
+        ),
     ]
 
     def fake_request(method, url, **kwargs):
-       calls.append((method, url, kwargs))
-       return responses.pop(0)
+        calls.append((method, url, kwargs))
+        return responses.pop(0)
 
     monkeypatch.setattr(requests, "request", fake_request)
     app = _app()
     app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
     app.run()
     app.text_input[0].set_value("Lección adaptada")
-    app.run()  # <--- Este app.run() procesa el cambio de texto
+    app.run()
     app.button[0].click()
     app.run()
 
-    assert [call[1].rsplit("/", 1)[-1] for call in calls] == ["extract", "adaptar-contenido"]
+    assert [call[1].rsplit("/", 1)[-1] for call in calls] == [
+        "extract",
+        "adaptar-contenido",
+    ]
     assert calls[0][2]["files"]["file"][:2] == ("lesson.md", b"# Lesson")
     assert calls[1][2]["json"] == {
-       "documento_id": "doc-test-123",
-       "documento_titulo": "Lección adaptada",
-       "documento_contenido": "Texto fuente",
-       "objeto_origen_id": "originales/lesson.md",
-       "perfil_destinatario": "Principiante",
-       "formato_salida": "Tutorial",
-       "nicho_sector": "General",
-       "nivel_detalle": "Didactico",
+        "documento_id": "doc-test-123",
+        "documento_titulo": "Lección adaptada",
+        "documento_contenido": "Texto fuente",
+        "objeto_origen_id": "originales/lesson.md",
+        "perfil_destinatario": "Principiante",
+        "formato_salida": "Tutorial",
+        "nicho_sector": "General",
+        "nivel_detalle": "Didactico",
     }
-    assert any("El contenido educativo se generó correctamente." in message.value for message in app.success)
+    assert any(
+        "El contenido educativo se generó correctamente." in message.value
+        for message in app.success
+    )
 
 
 def test_http_success_with_error_status_shows_only_adaptation_error(monkeypatch):
@@ -172,8 +269,12 @@ def test_api_error_is_displayed_without_clearing_form_selections(monkeypatch):
     app.run()
 
     assert any(
-       "ERROR_TEST: Servicio no disponible" in error.value
+       "Servicio no disponible" in error.value
        for error in app.error
+    )
+    assert any(
+       "ERROR_TEST" in caption.value
+       for caption in app.caption
     )
     assert not app.button[0].disabled
     assert app.selectbox[0].value == "Principiante"
@@ -227,6 +328,65 @@ def test_selector_change_preserves_and_renders_last_response(monkeypatch):
        header.value == "Resultado conservado"
        for header in app.header
     )
+
+
+def test_quiz_retry_resets_answers_without_calling_backend(monkeypatch):
+	calls = []
+	responses = [
+		FakeResponse({"text": "Texto fuente", "metadata": {}}),
+		FakeResponse(
+			{
+				"status": "exito",
+				"metadatos": {
+					"formato_generado": "Quiz",
+					"tiempo_estimado_estudio_minutos": 5,
+					"conceptos_clave": [],
+				},
+				"contenido_adaptado": {
+					"titulo": "Quiz de prueba",
+					"introduccion_contextualizada": "Responde las preguntas.",
+					"items": [
+						{
+							"pregunta": "¿Qué opción es correcta?",
+							"opciones": ["Correcta", "Incorrecta"],
+							"respuesta_correcta": "Correcta",
+							"justificacion": "La opción correcta coincide con la fuente.",
+						}
+					],
+				},
+				"evaluacion_calidad": {},
+				"almacenamiento_oci": {},
+			}
+		),
+	]
+
+	def fake_request(method, url, **kwargs):
+		calls.append((method, url, kwargs))
+		return responses.pop(0)
+
+	monkeypatch.setattr(requests, "request", fake_request)
+	app = _app()
+	app.file_uploader[0].set_value(("lesson.md", b"# Lesson", "text/markdown"))
+	app.run()
+	app.button[0].click()
+	app.run()
+
+	assert len(calls) == 2
+	app.radio[0].set_value("Correcta")
+	app.run()
+	assert not any(button.label == "Reintentar" for button in app.button)
+	assert len(app.error) == 0
+
+	next(button for button in app.button if button.label == "Confirmar respuesta").click()
+	app.run()
+
+	assert any(button.label == "Reintentar" for button in app.button)
+	next(button for button in app.button if button.label == "Reintentar").click()
+	app.run()
+
+	assert not app.exception
+	assert len(calls) == 2
+	assert app.radio[0].value is None
 
 
 def test_generation_forwards_extracted_pages(monkeypatch):
@@ -352,6 +512,50 @@ def test_footer_shows_connected_when_api_returns_validation_error(monkeypatch):
     assert "http://" not in footer
     assert "API conectada" in footer
     assert "Sin conexión" not in footer
+
+
+# --- NM-41: cerrar sesión ---
+def _valores_markdown(app) -> list[str]:
+	return [m.value for m in app.markdown] + [
+		m.value for m in app.sidebar.markdown
+	]
+
+
+def test_logout_link_visible_cuando_hay_logout_url(monkeypatch):
+	monkeypatch.setenv("LOGOUT_URL", "/salir")
+
+	app = _app()
+
+	enlaces = {
+		valor for valor in _valores_markdown(app)
+		if 'class="logout-link"' in valor
+	}
+	assert len(enlaces) == 1
+	enlace = next(iter(enlaces))
+	assert 'href="/salir"' in enlace
+	assert "Cerrar sesión" in enlace
+
+
+def test_logout_link_oculto_sin_logout_url(monkeypatch):
+	monkeypatch.delenv("LOGOUT_URL", raising=False)
+
+	app = _app()
+
+	assert not any(
+		'class="logout-link"' in valor
+		for valor in _valores_markdown(app)
+	)
+
+
+def test_logout_link_oculto_con_logout_url_externa(monkeypatch):
+	monkeypatch.setenv("LOGOUT_URL", "https://evil.example.com/salir")
+
+	app = _app()
+
+	assert not any(
+		'class="logout-link"' in valor
+		for valor in _valores_markdown(app)
+	)
 
 
 # --- NM-D5: exportaciones ---

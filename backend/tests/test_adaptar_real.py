@@ -22,7 +22,11 @@ from app.services.dependencies import get_adaptacion_service
 URL = "/api/v1/adaptar-contenido"
 PAYLOAD = {
     "documento_titulo": "Redes VCN en OCI",
-    "documento_contenido": "La VCN es una red privada configurable en Oracle Cloud.",
+    "documento_contenido": (
+        "La VCN es una red privada configurable en Oracle Cloud. "
+        "Permite definir subredes y reglas de seguridad para controlar el tráfico. "
+        "Cada subred pertenece a una VCN y utiliza un rango de direcciones IP."
+    ),
     "perfil_destinatario": "Principiante",
     "formato_salida": "Flashcards",
     "nicho_sector": "General",
@@ -213,7 +217,7 @@ def _payload():
     return SimpleNamespace(documento_titulo="Titulo", documento_contenido="contenido largo " * 5)
 
 def test_contexto_indexa_si_no_existe_y_arma_fuentes():
-    frag = SimpleNamespace(chunk_id="c9", score=0.8, metadatos={"pagina": 3})
+    frag = SimpleNamespace(chunk_id="c9", documento_id="doc", score=0.8, metadatos={"pagina": 3}, texto="texto c9")
     chroma = FakeChroma(0)
     a, ll = _adapter(chroma, [frag])
     ctx = a.obtener_contexto(_payload())
@@ -224,7 +228,7 @@ def test_contexto_indexa_si_no_existe_y_arma_fuentes():
 
 def test_contexto_indexa_con_las_paginas_reales_del_payload():
     """Con `documento_paginas`, el chunker recibe las páginas reales y `pagina` refleja el origen."""
-    frag = SimpleNamespace(chunk_id="c9", score=0.8, metadatos={"pagina": 2})
+    frag = SimpleNamespace(chunk_id="c9", documento_id="doc", score=0.8, metadatos={"pagina": 2}, texto="texto c9")
     chroma = FakeChroma(0)
     a, ll = _adapter(chroma, [frag])
     payload = SimpleNamespace(
@@ -267,6 +271,48 @@ def test_verificador_pasa_doc_id_y_vector_store_compartidos():
     assert visto["contenido_adaptado"] == "CONTENIDO" and visto["perfil_destinatario"] == "Principiante"
 
 
+@pytest.mark.parametrize("formato", ["Tutorial", "Flashcards", "Quiz", "Resumen_Ejecutivo", "Guion_Clase"])
+def test_documento_breve_se_rechaza_antes_de_llamar_proveedores(monkeypatch, formato):
+    monkeypatch.setattr(settings, "DOCUMENT_MIN_WORDS", 30)
+    c, _ = make_client(
+        contexto=FakeContexto(error=AssertionError("No debe indexar")),
+        generador=FakeGenerador(error=AssertionError("No debe generar")),
+        storage=FakeStorage(error=AssertionError("No debe persistir")),
+    )
+    r = c.post(URL, json={**PAYLOAD, "documento_contenido": "La nube permite almacenar datos.", "formato_salida": formato})
+    assert r.status_code == 422
+    assert r.json()["error"]["codigo"] == "DOCUMENTO_INSUFICIENTE"
+    assert formato in r.json()["error"]["mensaje"]
+
+
+@pytest.mark.parametrize("score,claims", [
+    (0.69, []), (0.8, [{"item": 1, "texto": "La fuente no respalda esta afirmación."}]),
+])
+def test_politica_y_observaciones_llegan_a_la_respuesta_y_a_oci(monkeypatch, score, claims):
+    monkeypatch.setattr(settings, "FIDELITY_SCORE_THRESHOLD", 0.7)
+    stored = []
+
+    class VerificadorObservado:
+        def evaluar(self, payload, contenido, contexto):
+            return EvaluacionCalidadSchema(
+                anclaje_fuente_score=score, claridad_pedagogica="Media",
+                observaciones="Revisar la fuente.", afirmaciones_no_respaldadas=claims,
+            )
+
+    class StorageObservado(FakeStorage):
+        def guardar(self, payload, paquete):
+            stored.append(paquete)
+            return super().guardar(payload, paquete)
+
+    c, _ = make_client(verificador=VerificadorObservado(), storage=StorageObservado())
+    r = c.post(URL, json=PAYLOAD)
+    assert r.status_code == 200
+    quality = r.json()["evaluacion_calidad"]
+    assert quality["anclaje_fuente_score"] == score
+    assert quality["requiere_revision"] is True
+    assert quality["umbral_fidelidad"] == 0.7
+    assert quality["afirmaciones_no_respaldadas"] == claims
+    assert stored[0]["evaluacion_calidad"] == quality
 # --- NM-21: contenido insuficiente -> 422 (no 502) ---
 def test_contenido_insuficiente_para_metadatos_devuelve_422():
     from app.services.adaptacion_adapters import MetadatosRealAdapter

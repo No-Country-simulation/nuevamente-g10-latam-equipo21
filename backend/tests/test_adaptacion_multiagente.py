@@ -1,7 +1,10 @@
 """Tests de NM-28: servicio multi-agente y selección por USE_MULTIAGENT."""
 
 import pytest
+from fastapi.testclient import TestClient
 
+from app.core.config import settings
+from app.main import create_app
 from app.core.errors import LLMError, SinContextoRelevanteError
 from app.schemas.input import InputSchema
 from app.schemas.output import AlmacenamientoOCISchema, EvaluacionCalidadSchema
@@ -13,7 +16,12 @@ from app.services.mock_adaptacion_service import construir_respuesta_mock
 def _payload() -> InputSchema:
     return InputSchema(
         documento_titulo="Introduccion a la Arquitectura de Redes VCN en OCI",
-        documento_contenido="La Virtual Cloud Network (VCN) es una red privada en OCI.",
+        documento_contenido=(
+            "La Virtual Cloud Network (VCN) es una red privada en OCI. "
+            "Permite organizar recursos en subredes y controlar el tráfico mediante "
+            "reglas de seguridad. Las tablas de rutas definen el destino de los "
+            "paquetes que salen de cada subred."
+        ),
         perfil_destinatario="Principiante",
         formato_salida="Flashcards",
         nicho_sector="General",
@@ -36,8 +44,10 @@ class _FakeContexto:
 class _FakeMetadatos:
     def __init__(self, metadatos):
         self._metadatos = metadatos
+        self.llamadas = 0
 
     def generar(self, payload, contenido):
+        self.llamadas += 1
         return self._metadatos
 
 
@@ -216,3 +226,69 @@ def test_estado_incompleto_no_persiste_nada_en_oci():
         servicio.adaptar(_payload())
 
     assert storage.paquetes == []
+
+
+def _cliente_multiagente(monkeypatch, servicio):
+    from app.services import dependencies
+
+    monkeypatch.setattr(settings, "USE_MOCK_LLM", False)
+    monkeypatch.setattr(settings, "USE_MULTIAGENT", True)
+    monkeypatch.setattr(dependencies, "construir_servicio_multiagente", lambda: servicio)
+    return TestClient(create_app())
+
+
+@pytest.mark.parametrize("formato", [
+    "Tutorial", "Flashcards", "Quiz", "Resumen_Ejecutivo", "Guion_Clase",
+])
+def test_documento_breve_no_invoca_contexto_grafo_ni_storage(monkeypatch, formato):
+    monkeypatch.setattr(settings, "DOCUMENT_MIN_WORDS", 30)
+    base = construir_respuesta_mock(_payload())
+    grafo = _FakeGrafo(estado=_estado_final(base))
+    contexto, storage = _FakeContexto(), _FakeStorage()
+    servicio, _ = _servicio(grafo, contexto=contexto, storage=storage)
+    cliente = _cliente_multiagente(monkeypatch, servicio)
+    payload = _payload().model_dump(mode="json")
+    payload.update(documento_contenido="La nube permite almacenar datos.", formato_salida=formato)
+
+    respuesta = cliente.post("/api/v1/adaptar-contenido", json=payload)
+
+    assert respuesta.status_code == 422
+    assert respuesta.json()["error"]["codigo"] == "DOCUMENTO_INSUFICIENTE"
+    assert formato in respuesta.json()["error"]["mensaje"]
+    assert contexto.llamadas == 0
+    assert grafo.recibido is None
+    assert servicio._metadatos.llamadas == 0
+    assert storage.paquetes == []
+
+
+@pytest.mark.parametrize("score,umbral,claims,revision", [
+    (0.69, 0.7, [], True),
+    (0.7, 0.7, [], False),
+    (0.8, 0.9, [], True),
+    (0.9, 0.7, [{"item": 1, "texto": "Afirmación sin respaldo."}], True),
+])
+def test_politica_multiagente_se_conserva_en_respuesta_y_oci(
+    monkeypatch, score, umbral, claims, revision,
+):
+    monkeypatch.setattr(settings, "FIDELITY_SCORE_THRESHOLD", umbral)
+    base = construir_respuesta_mock(_payload())
+    estado = _estado_final(base, score=score)
+    estado["evaluacion_calidad"] = EvaluacionCalidadSchema(
+        anclaje_fuente_score=score, claridad_pedagogica="Media",
+        observaciones="Revisión final del grafo.", afirmaciones_no_respaldadas=claims,
+    )
+    storage = _FakeStorage()
+    servicio, _ = _servicio(_FakeGrafo(estado=estado), storage=storage)
+    cliente = _cliente_multiagente(monkeypatch, servicio)
+
+    respuesta = cliente.post(
+        "/api/v1/adaptar-contenido", json=_payload().model_dump(mode="json"),
+    )
+
+    assert respuesta.status_code == 200
+    calidad = respuesta.json()["evaluacion_calidad"]
+    assert calidad["anclaje_fuente_score"] == score
+    assert calidad["umbral_fidelidad"] == umbral
+    assert calidad["requiere_revision"] is revision
+    assert calidad["afirmaciones_no_respaldadas"] == claims
+    assert storage.paquetes[0]["evaluacion_calidad"] == calidad

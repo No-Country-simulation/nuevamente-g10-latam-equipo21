@@ -12,7 +12,11 @@ def render_error(error: Mapping[str, Any]) -> None:
     if not isinstance(message, str) or not message.strip():
         message = "No se pudo completar la solicitud."
 
+    if code == "DOCUMENTO_INSUFICIENTE":
+        st.warning(message)
+        return
+
+    st.error(message)
+
     if isinstance(code, str) and code.strip():
-        st.error(f"{code}: {message}")
-    else:
-        st.error(message)
+        st.caption(f"Código técnico: {code}")

@@ -34,8 +34,9 @@ from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.core.config import settings
-from app.schemas.output import ContenidoAdaptadoSchema, EvaluacionCalidadSchema
-from app.services.llm_provider import LLMProvider
+from app.schemas.output import AfirmacionNoRespaldadaSchema, ContenidoAdaptadoSchema, EvaluacionCalidadSchema
+from app.services.llm_provider import LLMProvider, LLMProviderError
+from app.services.quality_policy import aplicar_politica_calidad
 from app.services.retrieval_service import ensamblar_contexto, recuperar_contexto
 from app.services.vector_store import FragmentoRecuperado, VectorStore
 
@@ -182,8 +183,8 @@ def evaluar_fidelidad(
 
     Devuelve `EvaluacionCalidadSchema`, el bloque `evaluacion_calidad` del contrato.
     `perfil_destinatario`, si se conoce, orienta la valoración de
-    la claridad. `umbral` reemplaza a `settings.FIDELITY_SCORE_THRESHOLD` solo para el registro en
-    logs; no altera el score.
+    la claridad. `umbral` reemplaza a `settings.FIDELITY_SCORE_THRESHOLD` para el registro en
+    logs y la advertencia pública; no altera el score.
 
     Levanta `ValueError` si el contenido no tiene texto para verificar y `LLMProviderError` (o su
     subclase `LLMTimeoutError`) si el verificador falla o responde con una forma inesperada. Los
@@ -214,8 +215,17 @@ def evaluar_fidelidad(
             minimo,
         )
 
-    return EvaluacionCalidadSchema(
+    if any(afirmacion.item > len(contenido_adaptado.items) for afirmacion in verificacion.afirmaciones):
+        raise LLMProviderError("El verificador devolvió una referencia a un item inexistente.")
+
+    evaluacion = EvaluacionCalidadSchema(
         anclaje_fuente_score=score,
         claridad_pedagogica=verificacion.claridad_pedagogica,
         observaciones=verificacion.observaciones.strip(),
+        afirmaciones_no_respaldadas=[
+            AfirmacionNoRespaldadaSchema(item=afirmacion.item, texto=afirmacion.texto)
+            for afirmacion in verificacion.afirmaciones
+            if not afirmacion.respaldada
+        ],
     )
+    return aplicar_politica_calidad(evaluacion, umbral=minimo)

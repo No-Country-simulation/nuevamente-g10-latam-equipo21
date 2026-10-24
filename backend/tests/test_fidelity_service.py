@@ -146,6 +146,9 @@ def test_devuelve_el_bloque_evaluacion_calidad_del_contrato():
         "anclaje_fuente_score",
         "claridad_pedagogica",
         "observaciones",
+        "umbral_fidelidad",
+        "requiere_revision",
+        "afirmaciones_no_respaldadas",
     }
     assert isinstance(resultado.anclaje_fuente_score, float)
     assert 0.0 <= resultado.anclaje_fuente_score <= 1.0
@@ -334,3 +337,27 @@ def test_propaga_el_timeout_del_verificador_como_error_tipado():
 def test_el_metodo_de_calculo_esta_documentado_en_el_modulo():
     """Criterio 3: el método de cálculo del score vive en el repo."""
     assert "Método de cálculo de `anclaje_fuente_score`" in fidelity_service.__doc__
+
+
+def test_conserva_afirmacion_sin_respaldo_aunque_el_score_supere_el_umbral():
+    resultado = _evaluar(VerificadorFake(_respuesta([True] * 4 + [False])), umbral=0.7)
+    assert resultado.anclaje_fuente_score == 0.8
+    assert resultado.umbral_fidelidad == 0.7
+    assert resultado.requiere_revision is True
+    assert [a.model_dump() for a in resultado.afirmaciones_no_respaldadas] == [
+        {"item": 1, "texto": "afirmación 4"}
+    ]
+
+
+def test_rechaza_referencia_del_verificador_a_item_inexistente():
+    respuesta = _respuesta([False])
+    respuesta["afirmaciones"][0]["item"] = 99
+    with pytest.raises(LLMProviderError, match="item inexistente"):
+        _evaluar(VerificadorFake(respuesta))
+
+
+def test_conserva_observacion_de_la_introduccion():
+    respuesta = _respuesta([False])
+    respuesta["afirmaciones"][0]["item"] = 0
+    resultado = _evaluar(VerificadorFake(respuesta))
+    assert resultado.afirmaciones_no_respaldadas[0].item == 0

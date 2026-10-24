@@ -51,7 +51,10 @@ async def extract_document_endpoint(
             temporary_path = Path(temporary_file.name)
             temporary_file.write(content)
 
-        document = extract_document(temporary_path)
+        document = extract_document(
+            temporary_path,
+            original_filename=file.filename or "documento",
+        )
         documento_id = documento_id_desde_contenido(document.text)
         metadata = replace(
             document.metadata,

@@ -89,6 +89,11 @@ def construir_consultas(titulo: str, contenido: str) -> list[str]:
     return [construir_consulta(titulo, v) for v in dividir_en_ventanas(contenido, cantidad)]
 
 
+def _chunk_index(fragmento) -> int | None:
+    valor = (getattr(fragmento, "metadatos", None) or {}).get("chunk_index")
+    return valor if isinstance(valor, int) else None
+
+
 class ContextoRealAdapter:
     """NM-05 (indexar) + NM-06 (recuperar). Todo inyectable para tests."""
 
@@ -122,27 +127,75 @@ class ContextoRealAdapter:
         return self._vector_store
 
     def _recuperar_por_ventanas(self, consultas: list[str], doc_id: str) -> list:
-        """Recupera por sección y une sin duplicados, en orden de documento (NM-22).
+        """Recupera por sección y une sin duplicados, en orden de documento (NM-22, NM-33).
 
-        El top_k global se reparte entre las secciones (mínimo 1 por sección), de modo
-        que el total de fragmentos queda en max(RETRIEVAL_TOP_K, secciones) y entra en
-        RETRIEVAL_MAX_CONTEXT_TOKENS sin que ensamblar_contexto corte los últimos.
+        Cada ventana pide RETRIEVAL_VENTANA_CANDIDATOS fragmentos y conserva al menos
+        RETRIEVAL_FRAGMENTOS_POR_VENTANA (hasta el tamaño proporcional de su rango, acotado por
+        el presupuesto de contexto) cuyo chunk_index cae en el rango de esa ventana
+        (proporcional al total de chunks del documento). Así una ventana no puede traer
+        fragmentos de otra zona. Si hay chunk_index pero ninguno cae en el rango, la
+        ventana no aporta nada. Si los fragmentos no traen chunk_index, usa el
+        comportamiento previo: los primeros max(1, TOP_K // ventanas).
+        En PDFs de varias páginas el rango es aproximado (ventanas por caracteres,
+        chunks por página).
         """
-        por_ventana = max(1, settings.RETRIEVAL_TOP_K // len(consultas))
-        vistos: set[str] = set()
-        unidos = []
-        for consulta in consultas:
-            for fragmento in self._recuperar(
+        ventanas = len(consultas)
+        previo = max(1, settings.RETRIEVAL_TOP_K // ventanas)
+        total_chunks = self._store.count_document(doc_id)
+        # NM-33: el cupo de cada ventana crece con el tamaño de su rango; nunca baja del valor configurado.
+        cupo_base = math.ceil(total_chunks / ventanas)
+        por_ventana = max(1, settings.RETRIEVAL_FRAGMENTOS_POR_VENTANA, cupo_base)
+        candidatos_k = max(settings.RETRIEVAL_VENTANA_CANDIDATOS, previo, por_ventana)
+
+        from app.services.retrieval_service import fragmentos_que_caben
+
+        zonas: list[list] = []
+        for i, consulta in enumerate(consultas):
+            candidatos = self._recuperar(
                 consulta=consulta,
                 vector_store=self._vector_store,
                 documento_id=doc_id,
-                top_k=por_ventana,
-            ):
+                top_k=candidatos_k,
+            )
+            lo = i * total_chunks // ventanas
+            hi = (i + 1) * total_chunks // ventanas
+            en_rango = [
+                f for f in candidatos
+                if _chunk_index(f) is not None and lo <= _chunk_index(f) < hi
+            ]
+            hay_indices = any(_chunk_index(f) is not None for f in candidatos)
+            if en_rango:
+                zonas.append(en_rango[:por_ventana])
+            elif hay_indices:
+                # Hay indices, pero ninguno cae en esta zona: no se rellena con otras zonas.
+                logger.warning(
+                    "Ventana %d/%d sin candidatos en el rango de chunks [%d, %d)",
+                    i + 1, ventanas, lo, hi,
+                )
+                zonas.append([])
+            else:
+                zonas.append(candidatos[:previo])
+
+        def _orden(f):
+            idx = _chunk_index(f)
+            return idx if idx is not None else 0
+
+        # NM-33: presupuesto global. Se reparte por rondas (el mejor de cada zona, luego el
+        # segundo, etc.) y solo se acepta lo que sigue cabiendo en el contexto final.
+        elegidos: list = []
+        vistos: set[str] = set()
+        for ronda in range(max((len(z) for z in zonas), default=0)):
+            for zona in zonas:
+                if ronda >= len(zona):
+                    continue
+                fragmento = zona[ronda]
                 if fragmento.chunk_id in vistos:
                     continue
-                vistos.add(fragmento.chunk_id)
-                unidos.append(fragmento)
-        return unidos
+                prueba = sorted([*elegidos, fragmento], key=_orden)
+                if len(fragmentos_que_caben(prueba)) == len(prueba):
+                    elegidos = prueba
+                    vistos.add(fragmento.chunk_id)
+        return elegidos
 
     def obtener_contexto(self, payload) -> ContextoRecuperado:
         self._init_real()
@@ -165,6 +218,8 @@ class ContextoRealAdapter:
             )
         else:
             fragmentos = self._recuperar_por_ventanas(consultas, doc_id)
+        from app.services.retrieval_service import fragmentos_que_caben
+        fragmentos = fragmentos_que_caben(fragmentos)
         texto = self._ensamblar(fragmentos) if fragmentos else ""
         fuentes = [
             FuenteContexto(
