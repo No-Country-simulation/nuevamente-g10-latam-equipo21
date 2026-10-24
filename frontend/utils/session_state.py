@@ -13,6 +13,10 @@ def init_session_state() -> None:
         "document_title": None,
         "is_loading": False,
         "source_filename": None,
+        "quiz_signature": None,
+        "quiz_answers": {},
+        "quiz_confirmed_answers": {},
+        "quiz_attempt": 0,
         "api_status": None,
         # NM-35: identidad del archivo actualmente cargado. Permite detectar
         # cuándo el usuario sube un archivo distinto, para invalidar el
