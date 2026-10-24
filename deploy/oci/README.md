@@ -192,6 +192,24 @@ no se requieren claves OCI de usuario. NM-22 y NM-33 utilizan por defecto
 `RETRIEVAL_MAX_CONTEXT_TOKENS=6000`. Se pueden declarar en `runtime.env` si se
 desea cambiarlos, sin copiar todo el `.env.example` local.
 
+**Actualización de una VM existente (NM-33).** Si `runtime.env` ya declara
+`RETRIEVAL_MAX_CONTEXT_TOKENS` (por ejemplo `2000`), ese valor pisa el default de
+`6000` del código y las mediciones de cobertura de NM-33 no se reproducen. Al
+desplegar este cambio:
+
+1. Editar `runtime.env` sin recrearlo ni imprimir su contenido y dejar
+   `RETRIEVAL_MAX_CONTEXT_TOKENS=6000` (o quitar la línea para usar el default).
+2. Recrear el contenedor del backend para que relea `runtime.env` (un reinicio
+   simple no recarga el `env_file`), con el mismo comando `docker compose -f
+   compose.backend.yml up -d` y las variables de la sección de despliegue, y
+   esperar a que `nuevamente-backend-1` vuelva a `healthy`.
+3. Repetir la prueba de cobertura con el PDF de 12 páginas y comprobar que las
+   últimas secciones aparecen en el contexto y que el tiempo total de la
+   petición sigue por debajo del timeout de lectura del frontend (180 s).
+4. Comprobar el valor efectivo sin mostrar el resto de la configuración:
+   `sudo docker exec nuevamente-backend-1 printenv RETRIEVAL_MAX_CONTEXT_TOKENS`
+   debe devolver `6000`.
+
 ## Construcción de imágenes
 
 Desde la raíz de un release del proyecto en la VM:
