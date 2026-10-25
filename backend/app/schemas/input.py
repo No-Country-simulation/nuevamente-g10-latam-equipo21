@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import Field, StrictInt, StrictStr
 
 from app.schemas.base import PublicSchema
@@ -50,6 +51,18 @@ class DiagramaSchema(PublicSchema):
 
 
 class InputSchema(PublicSchema):
+    documento_id: Optional[StrictStr] = Field(
+        default=None,
+        min_length=1,
+        description="Identificador estable devuelto por POST /documents/extract",
+    )
+
+    objeto_origen_id: Optional[StrictStr] = Field(
+        default=None,
+        min_length=1,
+        description="Objeto OCI del documento original devuelto por POST /documents/extract",
+    )
+
     documento_titulo: StrictStr = Field(
         ...,
         min_length=3,
@@ -62,12 +75,9 @@ class InputSchema(PublicSchema):
         description="Contenido del documento técnico que será adaptado",
     )
 
-    documento_paginas: list[DocumentoPaginaSchema] | None = Field(
+    documento_paginas: Optional[list[DocumentoPaginaSchema]] = Field(
         default=None,
-        description=(
-            "Páginas del documento de origen, si se conocen. Permite preservar la "
-            "trazabilidad de página de los fragmentos recuperados."
-        ),
+        description="Lista de páginas del documento con su texto y número de página (NM-23)",
     )
 
     diagramas: list[DiagramaSchema] = Field(

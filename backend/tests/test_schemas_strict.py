@@ -62,6 +62,19 @@ def test_request_del_brief_sigue_validando():
     assert entrada.formato_salida.value == "Flashcards"
 
 
+def test_request_accepts_document_reference_fields():
+    entrada = InputSchema.model_validate(
+        {
+            **REQUEST_BRIEF,
+            "documento_id": "doc-123",
+            "objeto_origen_id": "originales/documento.md",
+        }
+    )
+
+    assert entrada.documento_id == "doc-123"
+    assert entrada.objeto_origen_id == "originales/documento.md"
+
+
 def test_endpoint_rechaza_campo_desconocido_e_indica_su_nombre():
     test_app = create_app()
     test_app.dependency_overrides[get_adaptacion_service] = lambda: object()
@@ -137,6 +150,14 @@ def test_output_rechaza_items_que_no_corresponden_al_formato():
 def test_esquema_anidado_rechaza_campos_desconocidos():
     payload = _output()
     payload["contenido_adaptado"]["items"][0]["campo_desconocido"] = "no permitido"
+
+    with pytest.raises(ValidationError):
+        OutputSchema.model_validate(payload)
+
+
+def test_status_upload_rechaza_valor_fuera_del_contrato():
+    payload = _output()
+    payload["almacenamiento_oci"]["status_upload"] = "fallido"
 
     with pytest.raises(ValidationError):
         OutputSchema.model_validate(payload)

@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from io import BytesIO
 
 import pytest
@@ -18,9 +19,8 @@ from app.services.document_ingestion import (
     ExtractedDocument,
     ExtractedImage,
 )
+from app.services.document_identity import documento_id_desde_contenido
 from app.services.oci_storage_service import get_oci_storage_service_factory
-
-from pathlib import Path
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -89,16 +89,30 @@ def test_extract_document_endpoint_returns_text_and_metadata():
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "text": "# Lesson\n\nContent.",
-        "metadata": {
-            "filename": "lesson.md",
-            "format": "md",
-            "character_count": len("# Lesson\n\nContent."),
-            "page_count": None,
-        },
-        "pages": [],
+    data = response.json()
+
+    assert data["documento_id"] == documento_id_desde_contenido(data["text"])
+    assert data["objeto_id"] == "originales/test-lesson.md"
+    assert data["status_upload"] == "completado"
+    assert data["text"] == "# Lesson\n\nContent."
+    assert data["metadata"] == {
+        "filename": "lesson.md",
+        "format": "md",
+        "character_count": len("# Lesson\n\nContent."),
+        "page_count": None,
     }
+
+    repeated_response = client.post(
+        "/api/v1/documents/extract",
+        files={
+            "file": (
+                "lesson.md",
+                b"# Lesson\r\n\r\nContent.  ",
+                "text/markdown",
+            )
+        },
+    )
+    assert repeated_response.json()["documento_id"] == data["documento_id"]
 
 
 def test_extract_document_endpoint_returns_interpreted_diagrams(monkeypatch):
@@ -212,19 +226,49 @@ def test_extract_document_endpoint_continues_when_storage_factory_fails(
         )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "text": "# Lesson\n\nContent.",
-        "metadata": {
-            "filename": "lesson.md",
-            "format": "md",
-            "character_count": len("# Lesson\n\nContent."),
-            "page_count": None,
-        },
-        "pages": [],
+    data = response.json()
+
+    assert "documento_id" in data
+    assert data["status_upload"] == "error"
+    assert data["objeto_id"] is None
+    assert data["text"] == "# Lesson\n\nContent."
+    assert data["metadata"] == {
+        "filename": "lesson.md",
+        "format": "md",
+        "character_count": len("# Lesson\n\nContent."),
+        "page_count": None,
     }
 
     assert "ValueError" in caplog.text
     assert "OCI namespace is not configured" not in caplog.text
+
+
+def test_extract_document_endpoint_preserves_original_upload_error_status():
+    class FailedStorageService:
+        def upload_original(self, **kwargs):
+            return AlmacenamientoOCISchema(
+                bucket="test-bucket",
+                objeto_id="originales/failed-upload.md",
+                status_upload="error",
+            )
+
+    app.dependency_overrides[get_oci_storage_service_factory] = (
+        lambda: FailedStorageService
+    )
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={
+            "file": (
+                "lesson.md",
+                b"# Lesson\r\n\r\nContent.  ",
+                "text/markdown",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status_upload"] == "error"
+    assert response.json()["objeto_id"] == "originales/failed-upload.md"
 
 
 def test_extract_document_endpoint_returns_502_when_oci_authentication_fails():

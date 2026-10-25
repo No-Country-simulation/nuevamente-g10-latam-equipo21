@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from components.file_uploader import render_file_uploader
 from components.error_display import render_error
 from components.loading_indicator import loading_indicator
-from components.package_result import render_package_result
+from components.package_result import render_package_result, render_applied_context
 from components.sidebar import render_adaptation_options
 from services.api_client import (
     APIClientError,
@@ -17,7 +17,7 @@ from services.api_client import (
 )
 from components.download_json import render_json_download
 from components.download_exports import render_export_buttons
-from utils.session_state import init_session_state
+from utils.session_state import clear_result, file_signature, init_session_state
 from utils.quality import requires_review
 
 
@@ -97,8 +97,14 @@ def run_adaptation(
         raise APIClientError("No se pudo extraer texto del documento.")
 
     payload = {
+        "documento_id": extracted.get("documento_id"),
         "documento_titulo": title.strip(),
         "documento_contenido": content,
+        "objeto_origen_id": (
+            extracted.get("objeto_id")
+            if extracted.get("status_upload") == "completado"
+            else None
+        ),
         **options,
     }
     pages = extracted.get("pages") or []
@@ -152,6 +158,15 @@ valid_source_file = (
     and uploaded_file.size > 0
 )
 
+# NM-35 — Archivo nuevo: si el archivo cambió respecto al que generó el
+# resultado actualmente en pantalla, ese resultado ya no corresponde a lo
+# que el usuario ve. Comparar solo identidad de archivo (nunca selectores)
+# es justamente lo que preserva el comportamiento de NM-19.
+current_file_signature = file_signature(uploaded_file)
+if current_file_signature != st.session_state.get("current_file_signature"):
+    st.session_state["current_file_signature"] = current_file_signature
+    clear_result()
+
 if uploaded_file is not None:
     if file_extension not in supported_extensions:
         st.warning(
@@ -161,7 +176,10 @@ if uploaded_file is not None:
     elif uploaded_file.size == 0:
         st.warning("El archivo está vacío. Sube un documento con contenido.")
     else:
-        st.success(f"Documento cargado: {uploaded_file.name}")
+        st.info(
+            f"Documento cargado: {uploaded_file.name} "
+            "(pendiente de validación al generar contenido)"
+        )
 
 with st.form("adaptation_form"):
     default_title = Path(uploaded_file.name).stem if uploaded_file else ""
@@ -187,8 +205,8 @@ if submitted:
         st.session_state["is_loading"] = True
         try:
             with loading_indicator(
-                "Extrayendo el documento y preparando el material. "
-                "Los documentos largos pueden tardar más de un minuto..."
+                "Extrayendo el documento y preparando el material... "
+                "Este proceso puede tomar hasta 2 minutos."
             ):
                 result = run_adaptation(
                     uploaded_file,
@@ -203,20 +221,30 @@ if submitted:
                     error = {
                         "mensaje": "No se pudo completar la adaptación."
                     }
+                # NM-35 — Generación fallida: no dejar el resultado anterior
+                # (ni su botón de descarga) dando a entender que es el actual.
+                clear_result()
                 render_error(error)
             else:
                 st.session_state["last_response"] = result
                 st.session_state["document_title"] = document_title.strip()
                 st.session_state["source_filename"] = uploaded_file.name
+
+                # NM-35 — Parámetros aplicados: se "congelan" los parámetros
+                # de ESTA generación exitosa, independientes de lo que pase
+                # después en la barra lateral (ver NM-19).
+                st.session_state["applied_parameters"] = options.copy()
                 if requires_review(result.get("evaluacion_calidad", {})) is False:
                     st.success("El contenido educativo se generó correctamente.")
 
         except APIConnectionError as error:
             st.session_state["api_status"] = False
+            clear_result()  # NM-35 — Generación fallida (sin conexión)
             render_error(error.error)
         except APIClientError as error:
             # La API respondió con un error (p. ej. validación): la conexión funciona.
             st.session_state["api_status"] = True
+            clear_result()  # NM-35 — Generación fallida (error de la API)
             render_error(error.error)
         finally:
             st.session_state["is_loading"] = False
@@ -227,6 +255,12 @@ st.divider()
 st.subheader("Resultados")
 if result and result.get("status") == "exito":
     with st.container():
+        # NM-35 — Parámetros aplicados: archivo, perfil, formato, nicho y
+        # nivel con los que se generó ESTE resultado específico.
+        render_applied_context(
+            st.session_state.get("applied_parameters"),
+            st.session_state.get("source_filename"),
+        )
         render_package_result(result)
         render_json_download(
             result,

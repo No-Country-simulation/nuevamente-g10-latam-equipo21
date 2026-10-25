@@ -3,6 +3,7 @@ import logging
 from types import SimpleNamespace
 
 from app.core.errors import PipelineNoConfiguradaError
+from app.schemas.input import InputSchema
 from app.services import adaptacion_service as modulo
 
 CLAVE_FALSA = "AIzaSyA1234567890abcdefghijklmnopqrstuv"
@@ -35,11 +36,21 @@ def test_persistir_no_filtra_credenciales_y_no_invalida_la_respuesta(caplog):
             raise RuntimeError(f"fallo OCI con key={CLAVE_FALSA}")
 
     modelo_falso = SimpleNamespace(model_dump=lambda mode="json": {})
+    payload = InputSchema(
+        documento_titulo="Introducción a VCN",
+        documento_contenido="Contenido de prueba suficientemente extenso.",
+        perfil_destinatario="Principiante",
+        formato_salida="Flashcards",
+        nicho_sector="General",
+        nivel_detalle="Didactico",
+    )
     servicio = object.__new__(SERVICIO)
     servicio._storage = StorageQueFalla()
 
     with caplog.at_level(logging.ERROR):
-        almacenamiento = servicio._persistir(None, modelo_falso, modelo_falso, modelo_falso)
+        almacenamiento = servicio._persistir(
+            payload, modelo_falso, modelo_falso, modelo_falso
+        )
 
     assert almacenamiento.status_upload == "error"
     assert CLAVE_FALSA not in caplog.text

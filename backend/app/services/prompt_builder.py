@@ -20,6 +20,7 @@ del contenido junto con las observaciones del Agente Crítico.
 from __future__ import annotations
 
 from functools import lru_cache
+import math
 from pathlib import Path
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -52,6 +53,30 @@ def _cargar_plantilla_revision() -> PromptTemplate:
     )
 
 
+# NM-33: rango de items por formato (minimo, maximo). El ticket solo da el ejemplo del Quiz
+# (5 a 10); el resto es decision de diseño y se ajusta aqui.
+_RANGO_ITEMS = {
+    "Quiz": (5, 10),
+    "Tutorial": (5, 10),
+    "Flashcards": (6, 12),
+    "Resumen_Ejecutivo": (6, 12),
+    "Guion_Clase": (4, 8),
+}
+_CARACTERES_POR_ITEM = 500  # estimacion: un item cada ~500 caracteres de contexto
+
+
+def _instruccion_cantidad(formato_salida: str, contexto_recuperado: str) -> str:
+    minimo, maximo = _RANGO_ITEMS.get(formato_salida, (4, 8))
+    sugerido = math.ceil(len(contexto_recuperado) / _CARACTERES_POR_ITEM)
+    objetivo = min(maximo, max(minimo, sugerido))
+    return (
+        f"genera entre {objetivo} y {maximo} items y cubre todos los temas del contexto "
+        "recuperado, con al menos un item por tema. Si hay mas temas que el maximo, agrupa "
+        "los relacionados. Si el contexto no alcanza para ese minimo, genera menos items "
+        "en lugar de inventar informacion."
+    )
+
+
 def construir_mensajes_adaptacion(
     *,
     documento_titulo: str,
@@ -75,6 +100,7 @@ def construir_mensajes_adaptacion(
     mensaje_humano = _cargar_plantilla_usuario().format(
         documento_titulo=documento_titulo,
         contexto_recuperado=contexto_recuperado,
+        instruccion_cantidad=_instruccion_cantidad(formato_salida, contexto_recuperado),
         instrucciones_perfil=personalizacion.INSTRUCCIONES_PERFIL[
             perfil_destinatario
         ],

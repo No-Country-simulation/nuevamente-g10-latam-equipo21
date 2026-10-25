@@ -1,6 +1,7 @@
 import pytest
 
 from app.services.prompt_builder import construir_mensajes_adaptacion
+from app.services.prompt_builder import _instruccion_cantidad
 
 _CONTEXTO_DE_PRUEBA = "Un índice acelera las búsquedas a costa de espacio en disco."
 
@@ -92,3 +93,35 @@ def test_feedback_critico_agrega_contenido_anterior_y_mensaje_de_revision():
     assert contenido_anterior in mensajes[2].content
     assert feedback in mensajes[2].content
     assert "versión completa corregida" in mensajes[2].content
+
+
+def test_cantidad_respeta_el_minimo_con_contexto_corto():
+    texto = _instruccion_cantidad("Quiz", "x" * 100)
+    assert "entre 5 y 10 items" in texto
+
+
+def test_cantidad_se_acota_al_maximo_con_contexto_largo():
+    texto = _instruccion_cantidad("Tutorial", "x" * 20000)
+    assert "entre 10 y 10 items" in texto
+
+
+def test_cantidad_crece_con_el_largo_del_contexto():
+    texto = _instruccion_cantidad("Resumen_Ejecutivo", "x" * 3936)
+    assert "entre 8 y 12 items" in texto
+
+
+def test_cantidad_usa_rango_por_defecto_si_el_formato_es_desconocido():
+    texto = _instruccion_cantidad("Otro", "x" * 100)
+    assert "entre 4 y 8 items" in texto
+
+
+def test_el_prompt_incluye_la_instruccion_de_cantidad():
+    mensajes = construir_mensajes_adaptacion(
+        documento_titulo="Prueba",
+        contexto_recuperado="x" * 3253,
+        perfil_destinatario="Principiante",
+        formato_salida="Tutorial",
+        nicho_sector="General",
+        nivel_detalle="Didactico",
+    )
+    assert "Cantidad de items: genera entre 7 y 10 items" in mensajes[1].content
