@@ -1,6 +1,12 @@
-from typing import Literal, Union
-
-from pydantic import Field, StrictBool, StrictFloat, StrictInt, StrictStr, model_validator
+from typing import Literal, Optional, Union
+from pydantic import (
+    Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    model_validator,
+)
 
 from app.schemas.base import PublicSchema
 from app.schemas.content import (
@@ -79,6 +85,14 @@ class EvaluacionCalidadSchema(PublicSchema):
 
 
 class AlmacenamientoOCISchema(PublicSchema):
+    documento_id: Optional[StrictStr] = Field(
+        default=None,
+        description="Identificador estable del documento original",
+    )
+    objeto_origen_id: Optional[StrictStr] = Field(
+        default=None,
+        description="Objeto OCI del documento original, si fue persistido",
+    )
     bucket: StrictStr = Field(
         ...,
         min_length=1,

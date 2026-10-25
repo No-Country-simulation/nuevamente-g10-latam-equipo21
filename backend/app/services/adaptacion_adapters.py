@@ -18,7 +18,6 @@ endpoint responde 200 con almacenamiento_oci.status_upload="error". Sobre objeto
 Quien consuma la respuesta debe decidir por status_upload, nunca por objeto_id.
 """
 
-import hashlib
 import math
 import logging
 from functools import lru_cache
@@ -38,15 +37,11 @@ from app.services.adaptacion_service import (
     ContextoRecuperado,
     FuenteContexto,
 )
+from app.services.document_identity import documento_id_desde_contenido
 
 logger = logging.getLogger("nuevamente.adaptacion")
 
 CONSULTA_MAX_CHARS = 500
-
-
-def documento_id_desde_contenido(contenido: str) -> str:
-    """El contrato no trae documento_id: se deriva del contenido (mismo texto -> mismo id)."""
-    return "doc-" + hashlib.sha256(contenido.encode("utf-8")).hexdigest()[:16]
 
 
 def construir_consulta(titulo: str, contenido: str) -> str:

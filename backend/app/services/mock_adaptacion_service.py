@@ -42,6 +42,7 @@ from app.schemas.output import (
     MetadatosSchema,
     OutputSchema,
 )
+from app.services.document_identity import documento_id_desde_contenido
 
 # Se toma del Settings centralizado (NM-03), no hardcodeado, para que quede
 # consistente con OCI_BUCKET_NAME cuando NM-11/NM-02 lo usen de verdad.
@@ -77,11 +78,14 @@ def _base_evaluacion() -> EvaluacionCalidadSchema:
     )
 
 
-def _base_almacenamiento() -> AlmacenamientoOCISchema:
+def _base_almacenamiento(payload: InputSchema) -> AlmacenamientoOCISchema:
     # El mock no sube nada a OCI. status_upload="error" indica que no hubo subida
     # y objeto_id="mock-no-persistido" identifica la respuesta como simulada.
     # Reportar "completado" sería un éxito falso (NM-20).
     return AlmacenamientoOCISchema(
+        documento_id=payload.documento_id
+        or documento_id_desde_contenido(payload.documento_contenido),
+        objeto_origen_id=payload.objeto_origen_id,
         bucket=BUCKET_MOCK,
         objeto_id=OBJETO_ID_MOCK,
         status_upload="error",
@@ -109,7 +113,7 @@ def _mock_flashcards(payload: InputSchema) -> OutputSchema:
             items=items,
         ),
         evaluacion_calidad=_base_evaluacion(),
-        almacenamiento_oci=_base_almacenamiento(),
+        almacenamiento_oci=_base_almacenamiento(payload),
     )
 
 
@@ -169,7 +173,7 @@ def _mock_quiz(payload: InputSchema) -> OutputSchema:
             items=items,
         ),
         evaluacion_calidad=_base_evaluacion(),
-        almacenamiento_oci=_base_almacenamiento(),
+        almacenamiento_oci=_base_almacenamiento(payload),
     )
 
 
@@ -202,7 +206,7 @@ def _mock_tutorial(payload: InputSchema) -> OutputSchema:
             items=items,
         ),
         evaluacion_calidad=_base_evaluacion(),
-        almacenamiento_oci=_base_almacenamiento(),
+        almacenamiento_oci=_base_almacenamiento(payload),
     )
 
 
@@ -223,7 +227,7 @@ def _mock_resumen_ejecutivo(payload: InputSchema) -> OutputSchema:
             items=items,
         ),
         evaluacion_calidad=_base_evaluacion(),
-        almacenamiento_oci=_base_almacenamiento(),
+        almacenamiento_oci=_base_almacenamiento(payload),
     )
 
 
@@ -245,7 +249,7 @@ def _mock_guion_clase(payload: InputSchema) -> OutputSchema:
             items=items,
         ),
         evaluacion_calidad=_base_evaluacion(),
-        almacenamiento_oci=_base_almacenamiento(),
+        almacenamiento_oci=_base_almacenamiento(payload),
     )
 
 

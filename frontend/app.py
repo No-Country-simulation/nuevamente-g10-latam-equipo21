@@ -97,8 +97,14 @@ def run_adaptation(
         raise APIClientError("No se pudo extraer texto del documento.")
 
     payload = {
+        "documento_id": extracted.get("documento_id"),
         "documento_titulo": title.strip(),
         "documento_contenido": content,
+        "objeto_origen_id": (
+            extracted.get("objeto_id")
+            if extracted.get("status_upload") == "completado"
+            else None
+        ),
         **options,
     }
     pages = extracted.get("pages") or []
@@ -220,7 +226,7 @@ if submitted:
                 st.session_state["last_response"] = result
                 st.session_state["document_title"] = document_title.strip()
                 st.session_state["source_filename"] = uploaded_file.name
-               
+
                 # NM-35 — Parámetros aplicados: se "congelan" los parámetros
                 # de ESTA generación exitosa, independientes de lo que pase
                 # después en la barra lateral (ver NM-19).
