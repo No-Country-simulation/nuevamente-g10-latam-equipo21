@@ -1,35 +1,36 @@
 # Despliegue de NuevaMente en OCI
 
 Esta guía documenta el despliegue de NuevaMente sobre una instancia OCI
-Compute de desarrollo. El backend FastAPI y el frontend Streamlit se ejecutan
-como contenedores independientes administrados con Docker Compose.
+Compute de desarrollo/demo. FastAPI, Streamlit y el servicio de acceso `demo_auth`
+se ejecutan como contenedores independientes administrados con Docker Compose.
 
 El despliegue requiere HTTPS y autenticación. Antes de iniciar o
 actualizar servicios, completar [el procedimiento de acceso protegido](DEMO_ACCESS.md).
 La guía incluye las comprobaciones de acceso realizadas sobre el entorno desplegado.
 
+El último despliegue documentado corresponde al **27 de octubre de 2026**, release
+`18f2b415f7fa88ab0cc3c5a35e28b42f40bf28c7`. Su contenido coincide con `main`
+`29345a7`, merge del [PR #105](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/105).
+La evidencia actual se detalla en [Validaciones](#validaciones); los resultados
+de NM-D2 se conservan como antecedentes fechados.
+
 ## Arquitectura desplegada
 
-```text
-Internet
-   |
-   v
-Traefik :80 (redirección) / :443 (HTTPS + autenticación)
-   |
-   v
-Streamlit :8501
-   |
-   | red Docker nuevamente-internal
-   v
-FastAPI :8000
-   |
-   +--> Google Gemini
-   +--> OCI Object Storage
+```mermaid
+flowchart TD
+    U[Internet] --> T[Traefik: HTTP 80 / HTTPS 443]
+    T -- /acceso y /salir --> A[demo_auth:8080]
+    T -- ForwardAuth /verificar --> A
+    T -- sesión válida --> F[Streamlit:8501]
+    F -- nuevamente-internal --> B[FastAPI:8000]
+    B --> G[Google Gemini]
+    B --> O[OCI Object Storage]
 ```
 
-- Solo Streamlit se publica mediante Traefik.
+- Traefik publica Streamlit y las rutas de acceso de `demo_auth`; verifica la
+  sesión mediante `ForwardAuth` antes de servir la interfaz.
 - FastAPI utiliza `expose` y no publica el puerto 8000 en la VM.
-- Ambos servicios comparten `nuevamente-internal`. FastAPI también se conecta
+- FastAPI y Streamlit comparten `nuevamente-internal`. FastAPI también se conecta
   a `proxy` para disponer de egreso hacia Gemini, OCI y los metadatos de
   Instance Principal; esa conexión no publica puertos. Se deshabilita
   explícitamente su descubrimiento por Traefik con `traefik.enable=false`.
@@ -46,8 +47,9 @@ La plataforma OCI debe proporcionar:
 
 - una instancia Compute con Docker y Docker Compose;
 - una red Docker externa llamada `proxy`;
-- Traefik conectado a esa red, con `websecure`, resolver `letsencrypt` y el
-  archivo privado de usuarios descrito en [la guía de acceso protegido](DEMO_ACCESS.md);
+- Traefik conectado a esa red, con `web`, `websecure` y resolver `letsencrypt`;
+- el hash privado de usuarios y la clave de firma montados únicamente en
+  `demo_auth`, como se describe en [la guía de acceso protegido](DEMO_ACCESS.md);
 - el Dynamic Group y las políticas IAM de la instancia;
 - acceso de Instance Principal al secreto de Gemini y al bucket privado
   `nuevamente-contenidos-educativos`;
@@ -161,20 +163,19 @@ copiarse al repositorio ni mostrarse en logs. El bloque crea un archivo nuevo:
 no ejecutarlo sobre un `runtime.env` existente sin preservar su configuración.
 
 El modelo `gemini-3.1-flash-lite` y el timeout de 60 segundos son overrides del
-entorno desplegado, confirmados por consulta el 12 de octubre de 2026. No son los
-valores predeterminados del código. No se ha confirmado que la elección responda
-a una limitación de cuota. Se mantiene el modelo porque la
-generación y persistencia del release fueron validadas con él. Según el
-[calendario oficial de Gemini](https://ai.google.dev/gemini-api/docs/deprecations/)
-consultado el 12 de octubre de 2026, continúa disponible y su fecha más temprana
-de retirada es el 7 de mayo de 2027. La actualización se evaluará por separado
-mediante pruebas de calidad, fidelidad, tiempos de respuesta y cuotas.
+entorno desplegado, confirmados nuevamente el 27 de octubre de 2026. No son los
+valores predeterminados del código (`gemini-3.8-flash` y 30 segundos). La prueba
+funcional del release actual generó y persistió contenido con la configuración
+de la VM. Un cambio de modelo debe evaluarse con pruebas de calidad, fidelidad,
+tiempos y cuotas, consultando el
+[calendario oficial de Gemini](https://ai.google.dev/gemini-api/docs/deprecations/).
 
 `GEMINI_FALLBACK_MODEL_NAME` es opcional y el archivo de ejemplo la deja vacía.
-Se propone `gemini-3.5-flash-lite` como modelo de respaldo, pero antes de
-activarlo en la VM se debe verificar su disponibilidad con la cuenta del
-proyecto y probar los esquemas de salida. Si la variable queda vacía o no se
-define, solo se usa el modelo principal. Al
+La VM ya tiene configurado `gemini-3.5-flash-lite` como respaldo, confirmado el
+27 de octubre de 2026. Se usa ante cuota (429) o indisponibilidad (503) del
+principal, después de sus reintentos. La validación del release no forzó un fallo
+para comprobar el cambio de modelo. Si la variable queda vacía o no se define,
+solo se usa el modelo principal. Al
 configurarlo en un `runtime.env` existente, editar ese archivo sin recrearlo
 ni imprimir su contenido para conservar el resto de la configuración y el secreto.
 
@@ -191,6 +192,13 @@ no se requieren claves OCI de usuario. NM-22 y NM-33 utilizan por defecto
 `RETRIEVAL_VENTANA_CANDIDATOS=8`, `RETRIEVAL_FRAGMENTOS_POR_VENTANA=2` y
 `RETRIEVAL_MAX_CONTEXT_TOKENS=6000`. Se pueden declarar en `runtime.env` si se
 desea cambiarlos, sin copiar todo el `.env.example` local.
+
+NM-D4 utiliza `DIAGRAM_MAX_IMAGES_PER_DOCUMENT=10` y
+`DIAGRAM_MIN_IMAGE_AREA_PIXELS=10000` por defecto. Cada imagen candidata agrega
+una llamada multimodal con el timeout del proveedor; el límite se comprueba antes
+de interpretar imágenes y los íconos pequeños se filtran. Los PDF sin texto
+extraíble requieren OCR y siguen fuera del alcance. La extracción puede continuar
+si una imagen es inválida o falla su interpretación.
 
 **Actualización de una VM existente (NM-33).** Si `runtime.env` ya declara
 `RETRIEVAL_MAX_CONTEXT_TOKENS` (por ejemplo `2000`), ese valor pisa el default de
@@ -252,6 +260,53 @@ iniciar Streamlit.
 
 ## Validaciones
 
+### Release actual: 27 de octubre de 2026
+
+El código se transfirió desde los archivos versionados de `develop` `18f2b41`
+mediante `git archive`, sin copiar `.env` ni claves. Las tres imágenes se
+construyeron en la VM ARM64 y Compose se ejecutó desde:
+
+```text
+/opt/apps/apps/nuevamente/releases/18f2b415f7fa88ab0cc3c5a35e28b42f40bf28c7/deploy/oci
+```
+
+| Servicio | Imagen activa | Resultado |
+|---|---|---|
+| Backend | `nuevamente-backend:develop-18f2b41` | `healthy`, sin reinicios |
+| Frontend | `nuevamente-frontend:develop-18f2b41` | `healthy`, sin reinicios |
+| Acceso | `nuevamente-auth:develop-18f2b41` | `healthy`, sin reinicios |
+
+Comprobaciones realizadas durante la actualización:
+
+- API interna desde frontend: HTTP 200, entorno `production`.
+- Backend sin asignaciones de puertos en el host; acceso externo directo al 8000 sin conexión.
+- Portada HTTPS y ruta pública `/api/v1/health`: HTTP 303 hacia `/acceso`.
+- Página `/acceso`: HTTP 200, con validación normal del certificado TLS.
+- `RETRIEVAL_MAX_CONTEXT_TOKENS=6000` efectivo dentro del backend. Se corrigió
+  el override anterior de 2000 y se guardó el backup root-owned
+  `/etc/docker-platform/apps/nuevamente/runtime.env.before-18f2b41`.
+- Generación interna Principiante / Resumen Ejecutivo / General / Introductorio
+  con texto breve no sensible: HTTP 200, `status="exito"`, 5 ítems, score `1.0`
+  y `almacenamiento_oci.status_upload="completado"`.
+- Consulta independiente `head_object` mediante Instance Principal: HTTP 200
+  y tamaño 2824 bytes para el JSON generado:
+
+```text
+contenido-validacion-release-develop-18f2b41-principiante-resumen-ejecutivo-951a464e379d.json
+```
+
+Esta petición partió de texto directo: valida generación y persistencia del
+paquete, no la carga de un archivo original. No repitió el recorrido autenticado
+completo desde el navegador, documentos largos, PDF con diagramas, failover de
+modelo ni recuperación tras reiniciar la VM. El score observado corresponde a
+esa respuesta y no certifica otros documentos.
+
+Se conservaron el release anterior
+`/opt/apps/apps/nuevamente/releases/10d17ea5abc55f6a0db9c0eaf7a5f1ff34e1760d`
+y las tres imágenes `develop-10d17ea` para rollback. Se liberaron 2.16 GB de
+caché Docker de construcción no utilizada, conservando imágenes versionadas y
+volúmenes; el filesystem raíz quedó al 79% (6.2 GB libres).
+
 ### Regresión local antes del despliegue
 
 Con las dependencias de backend y frontend instaladas en el entorno de pruebas:
@@ -259,14 +314,27 @@ Con las dependencias de backend y frontend instaladas en el entorno de pruebas:
 ```bash
 (cd backend && USE_MOCK_LLM=true RUN_OCI_INTEGRATION=0 python -m pytest -q)
 (cd frontend && python -m pytest tests -q)
+python -m pytest deploy/oci/demo_auth/test_app.py -q
 ```
 
-La revisión local del 12 de octubre de 2026, después de incorporar `develop`
+El entorno del frontend requiere Pytest además de sus dependencias de ejecución.
+La prueba del acceso requiere sus dependencias, Pytest y HTTPX; puede ejecutarse
+desde un entorno de pruebas compartido con el backend.
+
+La revisión del 27 de octubre sobre `18f2b41`, con Python 3.12.10, obtuvo
+**388 passed, 1 skipped** en backend, **113 passed** en frontend y **5 passed**
+en autenticación: **506 pruebas aprobadas**. La integración OCI real fue la
+única omitida en la suite local; la generación y consulta real del objeto se
+ejecutaron por separado en la VM. También pasaron `compileall`, `pip check`,
+`git diff --check` y la validación de Compose. Las tres imágenes se construyeron
+localmente y nuevamente en ARM64 para el despliegue.
+
+Como antecedente, la revisión local del 12 de octubre de 2026, después de incorporar `develop`
 (`c4f92ad`), obtuvo **215 passed, 1 skipped** en backend y **55 passed** en
 frontend, con Python 3.12. La prueba omitida es la integración real con OCI.
-También se validó el Compose con un host de ejemplo y se comprobó que rechaza
-la configuración cuando falta `NUEVAMENTE_PUBLIC_HOST`. Estos controles no
-construyen imágenes ni sustituyen las pruebas del release en la VM con Python 3.11.
+En esa revisión también se validó el Compose con un host de ejemplo y se comprobó
+que rechaza la configuración cuando falta `NUEVAMENTE_PUBLIC_HOST`. Los resultados
+de esa fecha se conservan como evidencia histórica, no como conteos del release actual.
 
 ### Servicios en la VM
 
@@ -352,7 +420,7 @@ No se probó la recuperación tras reiniciar el daemon de Docker ni la VM.
 Esas pruebas requieren una ventana coordinada porque la instancia aloja otra
 aplicación.
 
-### Evidencia de validación del release de NM-D2
+### Evidencia histórica de validación del release de NM-D2
 
 El 12 de octubre de 2026 se desplegó y validó el release
 `c5cc1be990b8b98c723e70824bd78741d2821c5f`, construido en la VM desde un archivo
@@ -401,7 +469,7 @@ construir ambas imágenes quedaron aproximadamente **2,8 GB libres de 30 GB** en
 el filesystem raíz. Antes de acumular más builds, revisar el espacio y acordar
 una limpieza controlada; esta validación no eliminó imágenes ni volúmenes.
 
-### Prueba end-to-end y persistencia en Object Storage
+### Prueba histórica end-to-end y persistencia de NM-D2
 
 La validación del release `c5cc1be` se realizó con `AppTest` dentro del
 contenedor frontend, ejecutando `/app/app.py` sin mocks: carga de Markdown
