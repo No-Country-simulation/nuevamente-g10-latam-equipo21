@@ -78,6 +78,12 @@ def _override_storage_service():
 
 
 def test_extract_document_endpoint_returns_text_and_metadata():
+    diagram_service = FakeDiagramInterpretationService()
+    diagram_service.interpret = pytest.fail
+    app.dependency_overrides[get_diagram_interpretation_service] = (
+        lambda: diagram_service
+    )
+
     response = client.post(
         "/api/v1/documents/extract",
         files={
@@ -96,6 +102,7 @@ def test_extract_document_endpoint_returns_text_and_metadata():
     assert data["objeto_id"] == "originales/test-lesson.md"
     assert data["status_upload"] == "completado"
     assert data["text"] == "# Lesson\n\nContent."
+    assert "diagramas" not in data
     assert data["metadata"] == {
         "filename": "lesson.md",
         "format": "md",
@@ -162,7 +169,7 @@ def test_extract_document_endpoint_returns_interpreted_diagrams(monkeypatch):
     ]
 
 
-def test_extract_document_endpoint_maps_diagram_failure_to_llm_error(monkeypatch):
+def test_extract_document_endpoint_skips_failed_diagram_and_returns_text(monkeypatch):
     fake_document = ExtractedDocument(
         text="Arquitectura del sistema",
         metadata=DocumentMetadata(
@@ -197,11 +204,53 @@ def test_extract_document_endpoint_maps_diagram_failure_to_llm_error(monkeypatch
         files={"file": ("diagram.pdf", b"fake-pdf-content", "application/pdf")},
     )
 
-    assert response.status_code == 502
-    assert response.json()["error"] == {
-        "codigo": "LLM_NO_DISPONIBLE",
-        "mensaje": "No se pudo generar el contenido en este momento. Intenta nuevamente.",
-    }
+    assert response.status_code == 200
+    assert response.json()["text"] == "Arquitectura del sistema"
+    assert "diagramas" not in response.json()
+
+
+def test_extract_document_endpoint_skips_small_images_before_gemini(monkeypatch):
+    fake_document = ExtractedDocument(
+        text="Arquitectura del sistema",
+        metadata=DocumentMetadata(
+            filename="icon.pdf",
+            format="pdf",
+            character_count=len("Arquitectura del sistema"),
+            page_count=1,
+        ),
+        images=(
+            ExtractedImage(
+                data=b"fake-image-data",
+                name="icon.png",
+                page_number=1,
+                image_index=1,
+                mime_type="image/png",
+                width=20,
+                height=20,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.documents.extract_document",
+        lambda *args, **kwargs: fake_document,
+    )
+    monkeypatch.setattr(settings, "DIAGRAM_MIN_IMAGE_AREA_PIXELS", 10_000)
+    diagram_service = FakeDiagramInterpretationService()
+    diagram_service.interpret = pytest.fail
+    app.dependency_overrides[get_diagram_interpretation_service] = (
+        lambda: diagram_service
+    )
+    app.dependency_overrides[get_oci_storage_service_factory] = (
+        lambda: PermissiveStorageService
+    )
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={"file": ("icon.pdf", b"fake-pdf-content", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    assert "diagramas" not in response.json()
 
 
 def test_extract_document_endpoint_rejects_too_many_images_before_gemini(monkeypatch):

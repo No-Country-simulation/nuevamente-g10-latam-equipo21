@@ -12,7 +12,6 @@ from app.core.errors import (
     DocumentoInvalidoError,
     DocumentoNoSoportadoError,
     DocumentoSinTextoError,
-    LLMError,
     OCIAuthenticationError,
 )
 
@@ -24,6 +23,7 @@ from app.services.diagram_interpretation_service import (
 from app.services.document_ingestion import (
     DocumentExtractionError,
     EmptyPdfTextError,
+    ExtractedImage,
     UnsupportedDocumentFormatError,
     extract_document,
 )
@@ -35,6 +35,13 @@ from app.services.document_identity import documento_id_desde_contenido
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _is_diagram_candidate(image: ExtractedImage) -> bool:
+    """Conserva imágenes sin dimensiones conocidas y descarta íconos pequeños."""
+    if image.width is None or image.height is None:
+        return True
+    return image.width * image.height >= settings.DIAGRAM_MIN_IMAGE_AREA_PIXELS
 
 
 @router.post(
@@ -73,7 +80,17 @@ async def extract_document_endpoint(
             filename=file.filename or temporary_path.name,
         )
 
-        image_count = len(document.images)
+        diagram_images = tuple(
+            image for image in document.images if _is_diagram_candidate(image)
+        )
+        skipped_small_images = len(document.images) - len(diagram_images)
+        if skipped_small_images:
+            logger.info(
+                "Se omitieron %d imágenes pequeñas antes del análisis multimodal.",
+                skipped_small_images,
+            )
+
+        image_count = len(diagram_images)
         if image_count > settings.DIAGRAM_MAX_IMAGES_PER_DOCUMENT:
             raise DocumentoInvalidoError(
                 "El PDF contiene "
@@ -105,15 +122,20 @@ async def extract_document_endpoint(
             )
 
         diagrams = []
-        try:
-            for image in document.images:
+        for image in diagram_images:
+            try:
                 interpreted = await run_in_threadpool(
                     diagram_service.interpret,
                     image,
                 )
                 diagrams.append(asdict(interpreted))
-        except DiagramInterpretationError as error:
-            raise LLMError() from error
+            except DiagramInterpretationError as error:
+                logger.warning(
+                    "No se pudo interpretar la imagen página=%d índice=%d (%s); se continúa.",
+                    image.page_number,
+                    image.image_index,
+                    type(error).__name__,
+                )
 
         response = {
             "documento_id": documento_id,

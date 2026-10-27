@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     GEMINI_EMBEDDING_MODEL_NAME: str = "gemini-embedding-001"
     GEMINI_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0, allow_inf_nan=False)
     DIAGRAM_MAX_IMAGES_PER_DOCUMENT: int = Field(default=10, ge=1)
+    DIAGRAM_MIN_IMAGE_AREA_PIXELS: int = Field(default=10_000, ge=1)
 
     # Vector Store (ChromaDB)
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"

@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -94,6 +95,30 @@ def test_extracts_pdf_image_with_origin_position(tmp_path: Path):
     assert extracted_image.image_index == 1
     assert extracted_image.data
     assert extracted_image.mime_type.startswith("image/")
+    assert (extracted_image.width, extracted_image.height) == (20, 20)
+
+
+def test_pdf_image_extraction_failure_preserves_text(monkeypatch, tmp_path: Path):
+    source = tmp_path / "image-error.pdf"
+    source.write_bytes(b"fake-pdf")
+
+    class PageWithBrokenImages:
+        def extract_text(self):
+            return "Texto técnico disponible"
+
+        @property
+        def images(self):
+            raise RuntimeError("unsupported image filter")
+
+    monkeypatch.setattr(
+        "app.services.document_ingestion.PdfReader",
+        lambda *_: SimpleNamespace(pages=[PageWithBrokenImages()]),
+    )
+
+    document = extract_document(source)
+
+    assert document.text == "Texto técnico disponible"
+    assert document.images == ()
 
 
 def _pdf_bytes(content: str) -> bytes:

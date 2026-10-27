@@ -28,6 +28,7 @@ class DiagramaSchema(PublicSchema):
     description: StrictStr = Field(
         ...,
         min_length=1,
+        max_length=4000,
         description="Descripción técnica generada a partir del diagrama",
     )
 

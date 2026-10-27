@@ -1,6 +1,7 @@
 """Extracción y normalización de documentos soportados."""
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Final
 import unicodedata
@@ -9,6 +10,7 @@ from pypdf import PdfReader
 
 
 SUPPORTED_FORMATS: Final = {"pdf", "md", "txt"}
+logger = logging.getLogger(__name__)
 
 
 class DocumentExtractionError(Exception):
@@ -42,6 +44,8 @@ class ExtractedImage:
     page_number: int
     image_index: int
     mime_type: str
+    width: int | None = None
+    height: int | None = None
 
 
 @dataclass(frozen=True)
@@ -126,26 +130,48 @@ def _extract_pdf(
 
     for page_number, page in enumerate(reader.pages, start=1):
         pages_text.append(page.extract_text() or "")
-        for image_index, image_file in enumerate(page.images, start=1):
-            suffix = Path(image_file.name).suffix.lower()
-            mime_type = {
-                ".png": "image/png",
-                ".jpg": "image/jpeg",
-                ".jpeg": "image/jpeg",
-                ".gif": "image/gif",
-                ".webp": "image/webp",
-                ".tif": "image/tiff",
-                ".tiff": "image/tiff",
-            }.get(suffix, "application/octet-stream")
-            extracted_images.append(
-                ExtractedImage(
-                    data=image_file.data,
-                    name=image_file.name,
-                    page_number=page_number,
-                    image_index=image_index,
-                    mime_type=mime_type,
-                )
+        try:
+            page_images = list(page.images)
+        except Exception as error:
+            logger.warning(
+                "No se pudieron extraer las imágenes de la página %d (%s); se continúa con el texto.",
+                page_number,
+                type(error).__name__,
             )
+            continue
+
+        for image_index, image_file in enumerate(page_images, start=1):
+            try:
+                suffix = Path(image_file.name).suffix.lower()
+                mime_type = {
+                    ".png": "image/png",
+                    ".jpg": "image/jpeg",
+                    ".jpeg": "image/jpeg",
+                    ".gif": "image/gif",
+                    ".webp": "image/webp",
+                    ".tif": "image/tiff",
+                    ".tiff": "image/tiff",
+                }.get(suffix, "application/octet-stream")
+                pil_image = image_file.image
+                width, height = pil_image.size if pil_image is not None else (None, None)
+                extracted_images.append(
+                    ExtractedImage(
+                        data=image_file.data,
+                        name=image_file.name,
+                        page_number=page_number,
+                        image_index=image_index,
+                        mime_type=mime_type,
+                        width=width,
+                        height=height,
+                    )
+                )
+            except Exception as error:
+                logger.warning(
+                    "No se pudo extraer la imagen %d de la página %d (%s); se continúa.",
+                    image_index,
+                    page_number,
+                    type(error).__name__,
+                )
 
     text = "\n\n".join(pages_text)
 
