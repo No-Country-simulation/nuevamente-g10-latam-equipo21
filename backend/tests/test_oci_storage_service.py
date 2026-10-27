@@ -5,6 +5,7 @@ import pytest
 
 from app.core.config import Settings
 from app.schemas.input import InputSchema
+from app.services.adaptacion_adapters import documento_id_indice_desde_payload
 from app.services.mock_adaptacion_service import construir_respuesta_mock
 from app.services.oci_storage_service import (
     OCIStorageService,
@@ -125,6 +126,40 @@ def test_generated_package_is_uploaded_as_json_with_storage_result():
         == "originales/lesson-source.md"
     )
     assert client.calls[0]["content_type"] == "application/json"
+
+
+def test_multimodal_index_id_does_not_replace_original_document_link():
+    client = RecordingObjectStorageClient()
+    service = OCIStorageService(
+        client,
+        namespace="test-namespace",
+        bucket_name="test-bucket",
+    )
+    payload = InputSchema.model_validate(
+        {
+            **_payload().model_dump(mode="json"),
+            "diagramas": [
+                {
+                    "description": "El cliente se conecta a la API.",
+                    "page_number": 3,
+                    "image_index": 2,
+                    "image_name": "arquitectura.png",
+                }
+            ],
+        }
+    )
+
+    result = service.persist_generated_package(
+        payload=payload,
+        response=construir_respuesta_mock(payload),
+    )
+
+    assert documento_id_indice_desde_payload(payload) != payload.documento_id
+    assert result.almacenamiento_oci.documento_id == "doc-test-original"
+    assert (
+        result.almacenamiento_oci.objeto_origen_id
+        == "originales/lesson-source.md"
+    )
 
 
 def test_upload_failure_preserves_generated_content_and_reports_error(caplog):

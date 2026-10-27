@@ -1,7 +1,9 @@
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
@@ -69,6 +71,54 @@ def test_extracts_pdf_pages_in_reading_order(tmp_path: Path):
         DocumentPage(page_number=1, text="Page one"),
         DocumentPage(page_number=2, text="Page two"),
     )
+
+
+def test_extracts_pdf_image_with_origin_position(tmp_path: Path):
+    source = tmp_path / "diagram.pdf"
+    image = Image.new("RGB", (20, 20), "white")
+    image.save(source, format="PDF")
+
+    reader = PdfReader(str(source))
+    page = reader.pages[0]
+    writer = PdfWriter()
+    page.merge_page(_pdf_page("Diagram example"))
+    writer.add_page(page)
+    with source.open("wb") as file:
+        writer.write(file)
+
+    document = extract_document(source)
+
+    assert document.text == "Diagram example"
+    assert len(document.images) == 1
+    extracted_image = document.images[0]
+    assert extracted_image.page_number == 1
+    assert extracted_image.image_index == 1
+    assert extracted_image.data
+    assert extracted_image.mime_type.startswith("image/")
+    assert (extracted_image.width, extracted_image.height) == (20, 20)
+
+
+def test_pdf_image_extraction_failure_preserves_text(monkeypatch, tmp_path: Path):
+    source = tmp_path / "image-error.pdf"
+    source.write_bytes(b"fake-pdf")
+
+    class PageWithBrokenImages:
+        def extract_text(self):
+            return "Texto técnico disponible"
+
+        @property
+        def images(self):
+            raise RuntimeError("unsupported image filter")
+
+    monkeypatch.setattr(
+        "app.services.document_ingestion.PdfReader",
+        lambda *_: SimpleNamespace(pages=[PageWithBrokenImages()]),
+    )
+
+    document = extract_document(source)
+
+    assert document.text == "Texto técnico disponible"
+    assert document.images == ()
 
 
 def _pdf_bytes(content: str) -> bytes:

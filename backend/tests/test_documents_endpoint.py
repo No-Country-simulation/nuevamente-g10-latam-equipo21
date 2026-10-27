@@ -6,9 +6,20 @@ import pytest
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
+from app.core.config import settings
 from app.core.errors import OCIAuthenticationError
 from app.main import app
 from app.schemas.output import AlmacenamientoOCISchema
+from app.services.diagram_interpretation_service import (
+    DiagramInterpretationError,
+    InterpretedDiagram,
+    get_diagram_interpretation_service,
+)
+from app.services.document_ingestion import (
+    DocumentMetadata,
+    ExtractedDocument,
+    ExtractedImage,
+)
 from app.services.document_identity import documento_id_desde_contenido
 from app.services.oci_storage_service import get_oci_storage_service_factory
 
@@ -30,6 +41,26 @@ class FakeStorageService:
         )
 
 
+class FakeDiagramInterpretationService:
+    def interpret(self, image):
+        return InterpretedDiagram(
+            description="Un cliente se conecta a la API y a la base de datos.",
+            page_number=image.page_number,
+            image_index=image.image_index,
+            image_name=image.name,
+        )
+
+
+class PermissiveStorageService:
+    def upload_original(self, **kwargs):
+        return None
+
+
+class FailingDiagramInterpretationService:
+    def interpret(self, image):
+        raise DiagramInterpretationError("detalle técnico que no debe exponerse")
+
+
 @pytest.fixture(autouse=True)
 def _override_storage_service():
     app.dependency_overrides[get_oci_storage_service_factory] = (
@@ -40,9 +71,19 @@ def _override_storage_service():
         get_oci_storage_service_factory,
         None,
     )
+    app.dependency_overrides.pop(
+        get_diagram_interpretation_service,
+        None,
+    )
 
 
 def test_extract_document_endpoint_returns_text_and_metadata():
+    diagram_service = FakeDiagramInterpretationService()
+    diagram_service.interpret = pytest.fail
+    app.dependency_overrides[get_diagram_interpretation_service] = (
+        lambda: diagram_service
+    )
+
     response = client.post(
         "/api/v1/documents/extract",
         files={
@@ -61,6 +102,7 @@ def test_extract_document_endpoint_returns_text_and_metadata():
     assert data["objeto_id"] == "originales/test-lesson.md"
     assert data["status_upload"] == "completado"
     assert data["text"] == "# Lesson\n\nContent."
+    assert "diagramas" not in data
     assert data["metadata"] == {
         "filename": "lesson.md",
         "format": "md",
@@ -79,6 +121,182 @@ def test_extract_document_endpoint_returns_text_and_metadata():
         },
     )
     assert repeated_response.json()["documento_id"] == data["documento_id"]
+
+
+def test_extract_document_endpoint_returns_interpreted_diagrams(monkeypatch):
+    fake_document = ExtractedDocument(
+        text="Arquitectura del sistema",
+        metadata=DocumentMetadata(
+            filename="diagram.pdf",
+            format="pdf",
+            character_count=len("Arquitectura del sistema"),
+            page_count=1,
+        ),
+        images=(
+            ExtractedImage(
+                data=b"fake-image-data",
+                name="diagram.png",
+                page_number=1,
+                image_index=1,
+                mime_type="image/png",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.documents.extract_document",
+        lambda *args, **kwargs: fake_document,
+    )
+    app.dependency_overrides[get_diagram_interpretation_service] = (
+        lambda: FakeDiagramInterpretationService()
+    )
+    app.dependency_overrides[get_oci_storage_service_factory] = (
+        lambda: PermissiveStorageService
+    )
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={"file": ("diagram.pdf", b"fake-pdf-content", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["diagramas"] == [
+        {
+            "description": "Un cliente se conecta a la API y a la base de datos.",
+            "page_number": 1,
+            "image_index": 1,
+            "image_name": "diagram.png",
+        }
+    ]
+
+
+def test_extract_document_endpoint_skips_failed_diagram_and_returns_text(monkeypatch):
+    fake_document = ExtractedDocument(
+        text="Arquitectura del sistema",
+        metadata=DocumentMetadata(
+            filename="diagram.pdf",
+            format="pdf",
+            character_count=len("Arquitectura del sistema"),
+            page_count=1,
+        ),
+        images=(
+            ExtractedImage(
+                data=b"fake-image-data",
+                name="diagram.png",
+                page_number=1,
+                image_index=1,
+                mime_type="image/png",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.documents.extract_document",
+        lambda *args, **kwargs: fake_document,
+    )
+    app.dependency_overrides[get_diagram_interpretation_service] = (
+        lambda: FailingDiagramInterpretationService()
+    )
+    app.dependency_overrides[get_oci_storage_service_factory] = (
+        lambda: PermissiveStorageService
+    )
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={"file": ("diagram.pdf", b"fake-pdf-content", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "Arquitectura del sistema"
+    assert "diagramas" not in response.json()
+
+
+def test_extract_document_endpoint_skips_small_images_before_gemini(monkeypatch):
+    fake_document = ExtractedDocument(
+        text="Arquitectura del sistema",
+        metadata=DocumentMetadata(
+            filename="icon.pdf",
+            format="pdf",
+            character_count=len("Arquitectura del sistema"),
+            page_count=1,
+        ),
+        images=(
+            ExtractedImage(
+                data=b"fake-image-data",
+                name="icon.png",
+                page_number=1,
+                image_index=1,
+                mime_type="image/png",
+                width=20,
+                height=20,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.documents.extract_document",
+        lambda *args, **kwargs: fake_document,
+    )
+    monkeypatch.setattr(settings, "DIAGRAM_MIN_IMAGE_AREA_PIXELS", 10_000)
+    diagram_service = FakeDiagramInterpretationService()
+    diagram_service.interpret = pytest.fail
+    app.dependency_overrides[get_diagram_interpretation_service] = (
+        lambda: diagram_service
+    )
+    app.dependency_overrides[get_oci_storage_service_factory] = (
+        lambda: PermissiveStorageService
+    )
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={"file": ("icon.pdf", b"fake-pdf-content", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    assert "diagramas" not in response.json()
+
+
+def test_extract_document_endpoint_rejects_too_many_images_before_gemini(monkeypatch):
+    images = tuple(
+        ExtractedImage(
+            data=b"fake-image-data",
+            name=f"diagram-{index}.png",
+            page_number=1,
+            image_index=index,
+            mime_type="image/png",
+        )
+        for index in range(1, 3)
+    )
+    fake_document = ExtractedDocument(
+        text="Arquitectura del sistema",
+        metadata=DocumentMetadata(
+            filename="many-diagrams.pdf",
+            format="pdf",
+            character_count=len("Arquitectura del sistema"),
+            page_count=1,
+        ),
+        images=images,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.documents.extract_document",
+        lambda *args, **kwargs: fake_document,
+    )
+    monkeypatch.setattr(settings, "DIAGRAM_MAX_IMAGES_PER_DOCUMENT", 1)
+    diagram_service = FakeDiagramInterpretationService()
+    diagram_service.interpret = pytest.fail
+    app.dependency_overrides[get_diagram_interpretation_service] = (
+        lambda: diagram_service
+    )
+    app.dependency_overrides[get_oci_storage_service_factory] = (
+        lambda: (lambda: pytest.fail("No debe persistir un documento inválido"))
+    )
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={"file": ("many-diagrams.pdf", b"fake-pdf-content", "application/pdf")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["codigo"] == "DOCUMENTO_INVALIDO"
+    assert "2 imágenes" in response.json()["error"]["mensaje"]
+    assert "máximo permitido es 1" in response.json()["error"]["mensaje"]
 
 
 def test_extract_document_endpoint_continues_when_storage_factory_fails(

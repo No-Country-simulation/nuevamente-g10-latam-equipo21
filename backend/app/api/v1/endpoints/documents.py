@@ -6,6 +6,8 @@ from typing import Annotated, Callable
 
 from fastapi import APIRouter, Depends, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
+
+from app.core.config import settings
 from app.core.errors import (
     DocumentoInvalidoError,
     DocumentoNoSoportadoError,
@@ -13,9 +15,15 @@ from app.core.errors import (
     OCIAuthenticationError,
 )
 
+from app.services.diagram_interpretation_service import (
+    DiagramInterpretationError,
+    DiagramInterpretationService,
+    get_diagram_interpretation_service,
+)
 from app.services.document_ingestion import (
     DocumentExtractionError,
     EmptyPdfTextError,
+    ExtractedImage,
     UnsupportedDocumentFormatError,
     extract_document,
 )
@@ -29,6 +37,13 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _is_diagram_candidate(image: ExtractedImage) -> bool:
+    """Conserva imágenes sin dimensiones conocidas y descarta íconos pequeños."""
+    if image.width is None or image.height is None:
+        return True
+    return image.width * image.height >= settings.DIAGRAM_MIN_IMAGE_AREA_PIXELS
+
+
 @router.post(
     "/documents/extract",
     status_code=status.HTTP_200_OK,
@@ -39,6 +54,10 @@ async def extract_document_endpoint(
     storage_service_factory: Annotated[
         Callable[[], OCIStorageService],
         Depends(get_oci_storage_service_factory),
+    ],
+    diagram_service: Annotated[
+        DiagramInterpretationService,
+        Depends(get_diagram_interpretation_service),
     ],
 ):
     """Recibe un documento desde el frontend y retorna el texto extraído, metadatos y estado de persistencia."""
@@ -60,6 +79,24 @@ async def extract_document_endpoint(
             document.metadata,
             filename=file.filename or temporary_path.name,
         )
+
+        diagram_images = tuple(
+            image for image in document.images if _is_diagram_candidate(image)
+        )
+        skipped_small_images = len(document.images) - len(diagram_images)
+        if skipped_small_images:
+            logger.info(
+                "Se omitieron %d imágenes pequeñas antes del análisis multimodal.",
+                skipped_small_images,
+            )
+
+        image_count = len(diagram_images)
+        if image_count > settings.DIAGRAM_MAX_IMAGES_PER_DOCUMENT:
+            raise DocumentoInvalidoError(
+                "El PDF contiene "
+                f"{image_count} imágenes; el máximo permitido es "
+                f"{settings.DIAGRAM_MAX_IMAGES_PER_DOCUMENT}."
+            )
 
         objeto_id = None
         status_upload = "error"
@@ -84,7 +121,23 @@ async def extract_document_endpoint(
                 type(error).__name__,
             )
 
-        return {
+        diagrams = []
+        for image in diagram_images:
+            try:
+                interpreted = await run_in_threadpool(
+                    diagram_service.interpret,
+                    image,
+                )
+                diagrams.append(asdict(interpreted))
+            except DiagramInterpretationError as error:
+                logger.warning(
+                    "No se pudo interpretar la imagen página=%d índice=%d (%s); se continúa.",
+                    image.page_number,
+                    image.image_index,
+                    type(error).__name__,
+                )
+
+        response = {
             "documento_id": documento_id,
             "objeto_id": objeto_id,
             "status_upload": status_upload,
@@ -92,7 +145,9 @@ async def extract_document_endpoint(
             "pages": [asdict(p) for p in getattr(document, "pages", [])],
             "metadata": asdict(metadata),
         }
-
+        if diagrams:
+            response["diagramas"] = diagrams
+        return response
     except UnsupportedDocumentFormatError as error:
         raise DocumentoNoSoportadoError(str(error)) from error
     except EmptyPdfTextError as error:

@@ -1,6 +1,7 @@
 """Extracción y normalización de documentos soportados."""
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Final
 import unicodedata
@@ -9,6 +10,7 @@ from pypdf import PdfReader
 
 
 SUPPORTED_FORMATS: Final = {"pdf", "md", "txt"}
+logger = logging.getLogger(__name__)
 
 
 class DocumentExtractionError(Exception):
@@ -34,6 +36,19 @@ class DocumentMetadata:
 
 
 @dataclass(frozen=True)
+class ExtractedImage:
+    """Imagen extraída de un PDF con su posición de origen."""
+
+    data: bytes
+    name: str
+    page_number: int
+    image_index: int
+    mime_type: str
+    width: int | None = None
+    height: int | None = None
+
+
+@dataclass(frozen=True)
 class DocumentPage:
     """Texto normalizado de una página y su número (1-indexado)."""
 
@@ -48,6 +63,7 @@ class ExtractedDocument:
     text: str
     metadata: DocumentMetadata
     pages: tuple[DocumentPage, ...] = ()
+    images: tuple[ExtractedImage, ...] = ()
 
 
 def extract_document(
@@ -73,13 +89,14 @@ def extract_document(
         )
 
     if document_format == "pdf":
-        text, raw_pages = _extract_pdf(path, display_name)
+        text, raw_pages, images = _extract_pdf(path, display_name)
         page_count = len(raw_pages)
         pages = _build_pages(raw_pages)
     else:
         text = _read_text(path, display_name)
         page_count = None
         pages = ()
+        images = ()
 
     normalized_text = _normalize_text(text)
 
@@ -94,24 +111,77 @@ def extract_document(
         character_count=len(normalized_text),
         page_count=page_count,
     )
-    return ExtractedDocument(text=normalized_text, metadata=metadata, pages=pages)
+    return ExtractedDocument(
+        text=normalized_text,
+        metadata=metadata,
+        pages=pages,
+        images=images,
+    )
 
 
 def _extract_pdf(
         path: Path,
         display_name: str,
-    ) -> tuple[str, list[str]]:
-        reader = PdfReader(str(path))
-        pages_text = [page.extract_text() or "" for page in reader.pages]
-        text = "\n\n".join(pages_text)
+    ) -> tuple[str, list[str], tuple[ExtractedImage, ...]]:
+    """Extrae texto por página e imágenes embebidas con trazabilidad."""
+    reader = PdfReader(str(path))
+    pages_text: list[str] = []
+    extracted_images: list[ExtractedImage] = []
 
-        if not text.strip():
-            raise EmptyPdfTextError(
-                f"El PDF '{display_name}' no contiene texto extraíble; "
-                "OCR está fuera de alcance."
+    for page_number, page in enumerate(reader.pages, start=1):
+        pages_text.append(page.extract_text() or "")
+        try:
+            page_images = list(page.images)
+        except Exception as error:
+            logger.warning(
+                "No se pudieron extraer las imágenes de la página %d (%s); se continúa con el texto.",
+                page_number,
+                type(error).__name__,
             )
+            continue
 
-        return text, pages_text
+        for image_index, image_file in enumerate(page_images, start=1):
+            try:
+                suffix = Path(image_file.name).suffix.lower()
+                mime_type = {
+                    ".png": "image/png",
+                    ".jpg": "image/jpeg",
+                    ".jpeg": "image/jpeg",
+                    ".gif": "image/gif",
+                    ".webp": "image/webp",
+                    ".tif": "image/tiff",
+                    ".tiff": "image/tiff",
+                }.get(suffix, "application/octet-stream")
+                pil_image = image_file.image
+                width, height = pil_image.size if pil_image is not None else (None, None)
+                extracted_images.append(
+                    ExtractedImage(
+                        data=image_file.data,
+                        name=image_file.name,
+                        page_number=page_number,
+                        image_index=image_index,
+                        mime_type=mime_type,
+                        width=width,
+                        height=height,
+                    )
+                )
+            except Exception as error:
+                logger.warning(
+                    "No se pudo extraer la imagen %d de la página %d (%s); se continúa.",
+                    image_index,
+                    page_number,
+                    type(error).__name__,
+                )
+
+    text = "\n\n".join(pages_text)
+
+    if not text.strip():
+        raise EmptyPdfTextError(
+            f"El PDF '{display_name}' no contiene texto extraíble; "
+            "OCR está fuera de alcance."
+        )
+
+    return text, pages_text, tuple(extracted_images)
 
 
 def _build_pages(raw_pages: list[str]) -> tuple[DocumentPage, ...]:

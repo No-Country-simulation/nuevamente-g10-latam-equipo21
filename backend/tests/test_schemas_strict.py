@@ -119,6 +119,23 @@ def test_documento_paginas_estricto_sigue_aceptando_el_contrato_valido():
     assert [pagina.page_number for pagina in entrada.documento_paginas or []] == [1, 2]
 
 
+def test_diagrama_rechaza_descripcion_excesiva():
+    payload = {
+        **REQUEST_BRIEF,
+        "diagramas": [
+            {
+                "description": "x" * 4001,
+                "page_number": 1,
+                "image_index": 1,
+                "image_name": "diagram.png",
+            }
+        ],
+    }
+
+    with pytest.raises(ValidationError):
+        InputSchema.model_validate(payload)
+
+
 @pytest.mark.parametrize(
     ("ruta", "valor"),
     [

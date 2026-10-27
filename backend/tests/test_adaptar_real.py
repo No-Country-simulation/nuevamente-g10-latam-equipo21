@@ -14,7 +14,10 @@ from app.schemas.output import (
     EvaluacionCalidadSchema, MetadatosSchema,
 )
 from app.services.adaptacion_adapters import (
-    ContextoRealAdapter, VerificadorRealAdapter, documento_id_desde_contenido,
+    ContextoRealAdapter,
+    VerificadorRealAdapter,
+    documento_id_desde_contenido,
+    documento_id_indice_desde_payload,
 )
 from app.services.adaptacion_service import AdaptacionService, ContextoRecuperado, FuenteContexto
 from app.services.dependencies import get_adaptacion_service
@@ -246,6 +249,64 @@ def test_contexto_indexa_con_las_paginas_reales_del_payload():
     ]
     assert ctx.fuentes[0].pagina == 2
 
+
+def test_contexto_indexa_diagrama_como_chunk_con_origen():
+    chroma = FakeChroma(0)
+    adapter, _ = _adapter(chroma, [])
+    payload = SimpleNamespace(
+        documento_titulo="Arquitectura del sistema",
+        documento_contenido="contenido largo " * 5,
+        diagramas=[
+            SimpleNamespace(
+                description="Cliente conectado a una API y una base de datos.",
+                page_number=3,
+                image_index=2,
+                image_name="diagram.png",
+            )
+        ],
+    )
+
+    adapter.obtener_contexto(payload)
+
+    chunks = chroma.indexados[0]
+    diagram = chunks[-1]
+    assert diagram.text == payload.diagramas[0].description
+    assert diagram.source_type == "diagram"
+    assert diagram.page_number == 3
+    assert diagram.image_index == 2
+    assert diagram.image_name == "diagram.png"
+    assert diagram.document_id == documento_id_indice_desde_payload(payload)
+
+
+def test_contexto_no_reutiliza_indice_de_texto_si_ahora_hay_diagramas():
+    payload = SimpleNamespace(
+        documento_titulo="Arquitectura del sistema",
+        documento_contenido="contenido largo " * 5,
+        diagramas=[
+            SimpleNamespace(
+                description="Cliente conectado a una API.",
+                page_number=1,
+                image_index=1,
+                image_name="arquitectura.png",
+            )
+        ],
+    )
+    id_solo_texto = documento_id_desde_contenido(payload.documento_contenido)
+    id_multimodal = documento_id_indice_desde_payload(payload)
+
+    class ChromaPorDocumento(FakeChroma):
+        def count_document(self, document_id):
+            return 4 if document_id == id_solo_texto else 0
+
+    chroma = ChromaPorDocumento()
+    adapter, llamadas = _adapter(chroma, [])
+
+    adapter.obtener_contexto(payload)
+
+    assert id_multimodal != id_solo_texto
+    assert llamadas["c"][0] == id_multimodal
+    assert chroma.indexados[0][-1].document_id == id_multimodal
+
 def test_contexto_no_reindexa_si_ya_existe_y_vacio_sin_fragmentos():
     chroma = FakeChroma(4)
     a, _ = _adapter(chroma, [])
@@ -269,6 +330,37 @@ def test_verificador_pasa_doc_id_y_vector_store_compartidos():
     assert visto["documento_id"] == documento_id_desde_contenido(p.documento_contenido)
     assert visto["vector_store"] == "vs" and visto["llm_provider"] == "LLM"
     assert visto["contenido_adaptado"] == "CONTENIDO" and visto["perfil_destinatario"] == "Principiante"
+
+
+def test_verificador_usa_el_mismo_indice_multimodal_del_contexto():
+    ctx_adapter, _ = _adapter(FakeChroma(1), [])
+    visto = {}
+
+    def evaluar(**kwargs):
+        visto.update(kwargs)
+        return EvaluacionCalidadSchema(
+            anclaje_fuente_score=0.75,
+            claridad_pedagogica="Media",
+            observaciones="ok",
+        )
+
+    payload = SimpleNamespace(
+        documento_contenido="contenido largo " * 5,
+        perfil_destinatario=SimpleNamespace(value="Principiante"),
+        diagramas=[
+            SimpleNamespace(
+                description="Flujo entre cliente y API.",
+                page_number=1,
+                image_index=1,
+                image_name="flujo.png",
+            )
+        ],
+    )
+    VerificadorRealAdapter(ctx_adapter, llm_provider="LLM", evaluar=evaluar).evaluar(
+        payload, "CONTENIDO", None
+    )
+
+    assert visto["documento_id"] == documento_id_indice_desde_payload(payload)
 
 
 @pytest.mark.parametrize("formato", ["Tutorial", "Flashcards", "Quiz", "Resumen_Ejecutivo", "Guion_Clase"])

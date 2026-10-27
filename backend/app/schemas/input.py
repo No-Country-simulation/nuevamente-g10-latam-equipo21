@@ -24,6 +24,33 @@ class DocumentoPaginaSchema(PublicSchema):
     )
 
 
+class DiagramaSchema(PublicSchema):
+    description: StrictStr = Field(
+        ...,
+        min_length=1,
+        max_length=4000,
+        description="Descripción técnica generada a partir del diagrama",
+    )
+
+    page_number: StrictInt = Field(
+        ...,
+        ge=1,
+        description="Página del documento donde se encontró el diagrama",
+    )
+
+    image_index: StrictInt = Field(
+        ...,
+        ge=1,
+        description="Posición de la imagen dentro de la página",
+    )
+
+    image_name: StrictStr = Field(
+        ...,
+        min_length=1,
+        description="Nombre de la imagen extraída",
+    )
+
+
 class InputSchema(PublicSchema):
     documento_id: Optional[StrictStr] = Field(
         default=None,
@@ -54,6 +81,11 @@ class InputSchema(PublicSchema):
         description="Lista de páginas del documento con su texto y número de página (NM-23)",
     )
 
+    diagramas: list[DiagramaSchema] = Field(
+        default_factory=list,
+        description="Diagramas técnicos interpretados del documento original",
+    )
+
     perfil_destinatario: PerfilDestinatario = Field(
         ...,
         description="Perfil del público destinatario del contenido adaptado",
@@ -72,4 +104,4 @@ class InputSchema(PublicSchema):
     nivel_detalle: NivelDetalle = Field(
         ...,
         description="Nivel de profundidad requerido para el contenido adaptado",
-    )   
+    )

@@ -127,6 +127,38 @@ def test_el_estado_inicial_trae_el_contexto_ya_recuperado_y_los_parametros():
     assert contexto.llamadas == 1
 
 
+def test_multiagente_recibe_contexto_proveniente_de_un_diagrama():
+    base = construir_respuesta_mock(_payload())
+    grafo = _FakeGrafo(estado=_estado_final(base))
+    contexto_diagrama = (
+        "[Fuente: documento=doc-1 | chunk=doc-1:4 | pagina=3 | "
+        "source_type=diagram | image_index=2 | image_name=arquitectura.png]\n"
+        "El cliente se conecta a la API y luego a la base de datos."
+    )
+    servicio, _ = _servicio(
+        grafo,
+        contexto=_FakeContexto(texto=contexto_diagrama),
+    )
+    payload = InputSchema.model_validate(
+        {
+            **_payload().model_dump(mode="json"),
+            "diagramas": [
+                {
+                    "description": "El cliente se conecta a la API.",
+                    "page_number": 3,
+                    "image_index": 2,
+                    "image_name": "arquitectura.png",
+                }
+            ],
+        }
+    )
+
+    servicio.adaptar(payload)
+
+    assert grafo.recibido["contexto_recuperado"] == contexto_diagrama
+    assert "source_type=diagram" in grafo.recibido["contexto_recuperado"]
+
+
 def test_sin_contexto_no_invoca_el_grafo():
     grafo = _FakeGrafo(estado={})
     servicio, _ = _servicio(grafo, contexto=_FakeContexto(texto="   "))

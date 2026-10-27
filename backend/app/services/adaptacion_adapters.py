@@ -18,8 +18,10 @@ endpoint responde 200 con almacenamiento_oci.status_upload="error". Sobre objeto
 Quien consuma la respuesta debe decidir por status_upload, nunca por objeto_id.
 """
 
-import math
+import hashlib
+import json
 import logging
+import math
 from functools import lru_cache
 
 from app.core.config import settings
@@ -37,11 +39,46 @@ from app.services.adaptacion_service import (
     ContextoRecuperado,
     FuenteContexto,
 )
+from app.services.chunking import TextChunk
 from app.services.document_identity import documento_id_desde_contenido
 
 logger = logging.getLogger("nuevamente.adaptacion")
 
 CONSULTA_MAX_CHARS = 500
+
+
+def documento_id_indice_desde_payload(payload) -> str:
+    """Identidad del índice, incluyendo diagramas cuando forman parte del contexto.
+
+    Sin diagramas conserva exactamente el identificador histórico. Si dos cargas
+    extraen el mismo texto pero solo una contiene imágenes, deben ocupar índices
+    distintos para no reutilizar por error una versión que carece de esos chunks.
+    """
+    base_id = documento_id_desde_contenido(payload.documento_contenido)
+    diagramas = getattr(payload, "diagramas", None) or []
+    if not diagramas:
+        return base_id
+
+    representacion = sorted(
+        (
+            {
+                "description": diagrama.description,
+                "image_index": diagrama.image_index,
+                "image_name": diagrama.image_name,
+                "page_number": diagrama.page_number,
+            }
+            for diagrama in diagramas
+        ),
+        key=lambda item: (
+            item["page_number"] or 0,
+            item["image_index"] or 0,
+            item["image_name"] or "",
+            item["description"] or "",
+        ),
+    )
+    canonico = json.dumps(representacion, ensure_ascii=False, sort_keys=True)
+    sufijo = hashlib.sha256(canonico.encode("utf-8")).hexdigest()[:12]
+    return f"{base_id}-diag-{sufijo}"
 
 
 def construir_consulta(titulo: str, contenido: str) -> str:
@@ -150,6 +187,7 @@ class ContextoRealAdapter:
         from app.services.retrieval_service import fragmentos_que_caben
 
         zonas: list[list] = []
+        diagramas: dict[str, object] = {}
         for i, consulta in enumerate(consultas):
             candidatos = self._recuperar(
                 consulta=consulta,
@@ -157,13 +195,20 @@ class ContextoRealAdapter:
                 documento_id=doc_id,
                 top_k=candidatos_k,
             )
+            candidatos_texto = []
+            for fragmento in candidatos:
+                metadatos = getattr(fragmento, "metadatos", None) or {}
+                if metadatos.get("source_type") == "diagram":
+                    diagramas.setdefault(fragmento.chunk_id, fragmento)
+                else:
+                    candidatos_texto.append(fragmento)
             lo = i * total_chunks // ventanas
             hi = (i + 1) * total_chunks // ventanas
             en_rango = [
-                f for f in candidatos
+                f for f in candidatos_texto
                 if _chunk_index(f) is not None and lo <= _chunk_index(f) < hi
             ]
-            hay_indices = any(_chunk_index(f) is not None for f in candidatos)
+            hay_indices = any(_chunk_index(f) is not None for f in candidatos_texto)
             if en_rango:
                 zonas.append(en_rango[:por_ventana])
             elif hay_indices:
@@ -174,7 +219,13 @@ class ContextoRealAdapter:
                 )
                 zonas.append([])
             else:
-                zonas.append(candidatos[:previo])
+                zonas.append(candidatos_texto[:previo])
+
+        # Los diagramas se agregan al final del índice, pero su página puede estar
+        # en cualquier ventana. Se evalúan como una zona semántica independiente:
+        # así no se descartan por un rango posicional que solo representa texto.
+        if diagramas:
+            zonas.insert(0, list(diagramas.values()))
 
         def _orden(f):
             idx = _chunk_index(f)
@@ -199,7 +250,7 @@ class ContextoRealAdapter:
 
     def obtener_contexto(self, payload) -> ContextoRecuperado:
         self._init_real()
-        doc_id = documento_id_desde_contenido(payload.documento_contenido)
+        doc_id = documento_id_indice_desde_payload(payload)
 
         # Indexa solo si el documento aún no está (evita re-embeber: cuota de Gemini).
         if self._store.count_document(doc_id) == 0:
@@ -207,6 +258,20 @@ class ContextoRealAdapter:
                 document_id=doc_id,
                 pages=_paginas_para_indexar(payload),
             )
+            for diagram in getattr(payload, "diagramas", []):
+                chunks.append(
+                    TextChunk(
+                        document_id=doc_id,
+                        chunk_index=len(chunks),
+                        text=diagram.description,
+                        page_number=diagram.page_number,
+                        char_start=0,
+                        char_end=len(diagram.description),
+                        source_type="diagram",
+                        image_index=diagram.image_index,
+                        image_name=diagram.image_name,
+                    )
+                )
             self._store.index_chunks(chunks)
 
         consultas = construir_consultas(payload.documento_titulo, payload.documento_contenido)
@@ -287,7 +352,7 @@ class VerificadorRealAdapter:
         if self._llm is None:
             self._llm = _llm_provider_compartido()
         return self._evaluar(
-            documento_id=documento_id_desde_contenido(payload.documento_contenido),
+            documento_id=documento_id_indice_desde_payload(payload),
             contenido_adaptado=contenido,
             vector_store=self._contexto.vector_store,
             llm_provider=self._llm,

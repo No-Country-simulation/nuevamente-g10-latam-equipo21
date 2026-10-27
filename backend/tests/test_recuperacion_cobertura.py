@@ -57,6 +57,22 @@ def _frag(chunk_id, indice=None, texto=None):
     )
 
 
+def _diagrama(chunk_id, indice, pagina=1):
+    return SimpleNamespace(
+        chunk_id=chunk_id,
+        documento_id="doc",
+        score=0.99,
+        metadatos={
+            "chunk_index": indice,
+            "pagina": pagina,
+            "source_type": "diagram",
+            "image_index": 1,
+            "image_name": "diagrama.png",
+        },
+        texto="Diagrama relevante",
+    )
+
+
 def _respuestas_por_ventana(total, ancho):
     """Ranking simulado que respeta top_k.
 
@@ -197,6 +213,23 @@ def test_con_indices_fuera_de_la_ventana_no_aporta_nada(monkeypatch, caplog):
     assert ctx.texto == "" and ctx.fuentes == []
     avisos = [r for r in caplog.records if "sin candidatos en el rango" in r.getMessage()]
     assert len(avisos) == 10
+
+
+def test_diagrama_relevante_no_se_descarta_por_su_indice_al_final(monkeypatch):
+    monkeypatch.setattr(settings, "RETRIEVAL_MAX_VENTANAS", 10)
+    diagrama = _diagrama("d1", 40, pagina=1)
+    estado = {"ventana": 0}
+
+    def respuestas(consulta, top_k):
+        ventana = estado["ventana"]
+        estado["ventana"] += 1
+        texto = _frag(f"c{ventana * 4}", ventana * 4)
+        return [diagrama, texto][:top_k] if ventana == 0 else [texto][:top_k]
+
+    adapter, _ = _adapter(respuestas, total_chunks=41)
+    ctx = adapter.obtener_contexto(_payload(_documento_largo()))
+
+    assert "d1" in ctx.texto.split("|")
 
 
 def test_ventana_sin_candidatos_en_rango_no_rellena_con_otras_zonas(monkeypatch):
