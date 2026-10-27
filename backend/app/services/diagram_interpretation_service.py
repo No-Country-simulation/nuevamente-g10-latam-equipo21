@@ -39,7 +39,16 @@ class DiagramInterpretationService:
             return
 
         key = settings.GEMINI_API_KEY if api_key is None else api_key
-        self.client = genai.Client(api_key=key) if key else None
+        self.client = (
+            genai.Client(
+                api_key=key,
+                http_options=types.HttpOptions(
+                    timeout=max(1, round(settings.GEMINI_TIMEOUT_SECONDS * 1000)),
+                ),
+            )
+            if key
+            else None
+        )
 
     def interpret(self, image: ExtractedImage) -> InterpretedDiagram:
         """Genera una descripción técnica y preserva la posición de origen."""

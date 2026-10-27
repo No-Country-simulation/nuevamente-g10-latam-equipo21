@@ -7,6 +7,7 @@ from typing import Annotated, Callable
 from fastapi import APIRouter, Depends, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 
+from app.core.config import settings
 from app.core.errors import (
     DocumentoInvalidoError,
     DocumentoNoSoportadoError,
@@ -71,6 +72,14 @@ async def extract_document_endpoint(
             document.metadata,
             filename=file.filename or temporary_path.name,
         )
+
+        image_count = len(document.images)
+        if image_count > settings.DIAGRAM_MAX_IMAGES_PER_DOCUMENT:
+            raise DocumentoInvalidoError(
+                "El PDF contiene "
+                f"{image_count} imágenes; el máximo permitido es "
+                f"{settings.DIAGRAM_MAX_IMAGES_PER_DOCUMENT}."
+            )
 
         objeto_id = None
         status_upload = "error"

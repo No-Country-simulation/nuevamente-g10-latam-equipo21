@@ -256,6 +256,7 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 | `GEMINI_FALLBACK_MODEL_NAME` | vacío | Modelo de respaldo opcional ante cuota (429) o indisponibilidad (503); debe ser distinto del principal. |
 | `GEMINI_EMBEDDING_MODEL_NAME` | `gemini-embedding-001` | Modelo de embeddings. |
 | `GEMINI_TIMEOUT_SECONDS` | `30` | Tiempo máximo por llamada al proveedor. |
+| `DIAGRAM_MAX_IMAGES_PER_DOCUMENT` | `10` | Máximo de imágenes interpretadas por PDF antes de rechazar la solicitud. |
 | `CHROMA_PERSIST_DIRECTORY` | `./chroma_db` | Directorio local de ChromaDB. |
 | `RETRIEVAL_TOP_K` | `5` | Cantidad máxima de fragmentos recuperados. |
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.35` | Umbral mínimo de similitud. |

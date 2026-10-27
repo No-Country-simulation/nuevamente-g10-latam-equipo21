@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
+from app.core.config import settings
 from app.core.errors import OCIAuthenticationError
 from app.main import app
 from app.schemas.output import AlmacenamientoOCISchema
@@ -201,6 +202,52 @@ def test_extract_document_endpoint_maps_diagram_failure_to_llm_error(monkeypatch
         "codigo": "LLM_NO_DISPONIBLE",
         "mensaje": "No se pudo generar el contenido en este momento. Intenta nuevamente.",
     }
+
+
+def test_extract_document_endpoint_rejects_too_many_images_before_gemini(monkeypatch):
+    images = tuple(
+        ExtractedImage(
+            data=b"fake-image-data",
+            name=f"diagram-{index}.png",
+            page_number=1,
+            image_index=index,
+            mime_type="image/png",
+        )
+        for index in range(1, 3)
+    )
+    fake_document = ExtractedDocument(
+        text="Arquitectura del sistema",
+        metadata=DocumentMetadata(
+            filename="many-diagrams.pdf",
+            format="pdf",
+            character_count=len("Arquitectura del sistema"),
+            page_count=1,
+        ),
+        images=images,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.documents.extract_document",
+        lambda *args, **kwargs: fake_document,
+    )
+    monkeypatch.setattr(settings, "DIAGRAM_MAX_IMAGES_PER_DOCUMENT", 1)
+    diagram_service = FakeDiagramInterpretationService()
+    diagram_service.interpret = pytest.fail
+    app.dependency_overrides[get_diagram_interpretation_service] = (
+        lambda: diagram_service
+    )
+    app.dependency_overrides[get_oci_storage_service_factory] = (
+        lambda: (lambda: pytest.fail("No debe persistir un documento inválido"))
+    )
+
+    response = client.post(
+        "/api/v1/documents/extract",
+        files={"file": ("many-diagrams.pdf", b"fake-pdf-content", "application/pdf")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["codigo"] == "DOCUMENTO_INVALIDO"
+    assert "2 imágenes" in response.json()["error"]["mensaje"]
+    assert "máximo permitido es 1" in response.json()["error"]["mensaje"]
 
 
 def test_extract_document_endpoint_continues_when_storage_factory_fails(

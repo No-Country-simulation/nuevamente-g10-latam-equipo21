@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from app.core.config import settings
 from app.services.diagram_interpretation_service import DiagramInterpretationService
 from app.services.document_ingestion import ExtractedImage
 
@@ -35,3 +36,24 @@ def test_interprets_diagram_and_preserves_origin():
     assert result.page_number == 3
     assert result.image_index == 2
     assert result.image_name == "diagram.png"
+
+
+def test_configures_multimodal_client_timeout_in_milliseconds(monkeypatch):
+    observed = {}
+    fake_client = FakeClient()
+
+    def client_factory(*, api_key, http_options):
+        observed["api_key"] = api_key
+        observed["timeout"] = http_options.timeout
+        return fake_client
+
+    monkeypatch.setattr(
+        "app.services.diagram_interpretation_service.genai.Client",
+        client_factory,
+    )
+    monkeypatch.setattr(settings, "GEMINI_TIMEOUT_SECONDS", 12.5)
+
+    service = DiagramInterpretationService(api_key="test-key")
+
+    assert service.client is fake_client
+    assert observed == {"api_key": "test-key", "timeout": 12_500}
