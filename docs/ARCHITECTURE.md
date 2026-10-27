@@ -87,6 +87,8 @@ no garantiza que solo el frontend pueda acceder al backend. La configuración se
 
 ```json
 {
+  "documento_id": "string (opcional; identificador estable devuelto por /documents/extract)",
+  "objeto_origen_id": "string (opcional; objeto OCI original devuelto por /documents/extract)",
   "documento_titulo": "string",
   "documento_contenido": "string",
   "documento_paginas": ["{ page_number: number, text: string } (opcional)"],
@@ -117,6 +119,9 @@ no garantiza que solo el frontend pueda acceder al backend. La configuración se
 > indexado conserva su página real y la respuesta puede citarla; si se omite, todo el texto se
 > indexa como página 1 (comportamiento previo). El endpoint `POST /api/v1/documents/extract` ya
 > devuelve `pages` con este formato para que el cliente pueda reenviarlas.
+> `POST /api/v1/documents/extract` también devuelve un `documento_id` estable derivado del
+> texto extraído y el `objeto_id` original cuando se pudo persistir; el cliente los reenvía como
+> `documento_id` y `objeto_origen_id` al solicitar la adaptación.
 
 ---
 
@@ -143,8 +148,10 @@ no garantiza que solo el frontend pueda acceder al backend. La configuración se
     "observaciones": "string"
   },
   "almacenamiento_oci": {
+    "documento_id": "string (identificador estable del documento original)",
+    "objeto_origen_id": "string | null (objeto OCI del documento fuente, si se persistió)",
     "bucket": "string",
-    "objeto_id": "string",
+    "objeto_id": "string (objeto OCI del paquete generado)",
     "status_upload": "completado | error"
   }
 }

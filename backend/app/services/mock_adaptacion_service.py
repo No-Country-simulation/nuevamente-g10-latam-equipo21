@@ -25,6 +25,7 @@ la capa de API solo orquesta, la lógica de negocio va en servicios.
 
 
 from app.core.config import settings
+from app.services.quality_policy import aplicar_politica_calidad
 from app.schemas.content import (
     FlashcardItem,
     GuionItem,
@@ -41,6 +42,7 @@ from app.schemas.output import (
     MetadatosSchema,
     OutputSchema,
 )
+from app.services.document_identity import documento_id_desde_contenido
 
 # Se toma del Settings centralizado (NM-03), no hardcodeado, para que quede
 # consistente con OCI_BUCKET_NAME cuando NM-11/NM-02 lo usen de verdad.
@@ -67,18 +69,23 @@ def _base_metadatos(
 
 
 def _base_evaluacion() -> EvaluacionCalidadSchema:
-    return EvaluacionCalidadSchema(
-        anclaje_fuente_score=0.95,
-        claridad_pedagogica="Alta",
-        observaciones="Respuesta MOCK (NM-18) — no proviene de la pipeline RAG real.",
+    return aplicar_politica_calidad(
+        EvaluacionCalidadSchema(
+            anclaje_fuente_score=0.95,
+            claridad_pedagogica="Alta",
+            observaciones="Respuesta MOCK (NM-18) — no proviene de la pipeline RAG real.",
+        )
     )
 
 
-def _base_almacenamiento() -> AlmacenamientoOCISchema:
+def _base_almacenamiento(payload: InputSchema) -> AlmacenamientoOCISchema:
     # El mock no sube nada a OCI. status_upload="error" indica que no hubo subida
     # y objeto_id="mock-no-persistido" identifica la respuesta como simulada.
     # Reportar "completado" sería un éxito falso (NM-20).
     return AlmacenamientoOCISchema(
+        documento_id=payload.documento_id
+        or documento_id_desde_contenido(payload.documento_contenido),
+        objeto_origen_id=payload.objeto_origen_id,
         bucket=BUCKET_MOCK,
         objeto_id=OBJETO_ID_MOCK,
         status_upload="error",
@@ -106,7 +113,7 @@ def _mock_flashcards(payload: InputSchema) -> OutputSchema:
             items=items,
         ),
         evaluacion_calidad=_base_evaluacion(),
-        almacenamiento_oci=_base_almacenamiento(),
+        almacenamiento_oci=_base_almacenamiento(payload),
     )
 
 
@@ -123,6 +130,39 @@ def _mock_quiz(payload: InputSchema) -> OutputSchema:
             respuesta_correcta="Aislar y controlar el tráfico de red en la nube",
             justificacion="La VCN define el espacio de red privado del tenant (MOCK).",
         ),
+        QuizItem(
+            pregunta="¿Qué recurso permite controlar el tráfico de una subred mediante reglas?",
+            opciones=[
+                "Security Lists",
+                "Object Storage",
+                "Compute Instances",
+                "Compartments",
+            ],
+            respuesta_correcta="Security Lists",
+            justificacion="Las Security Lists aplican reglas de entrada y salida al tráfico de las VNIC de una subred (MOCK).",
+        ),
+        QuizItem(
+            pregunta="¿Qué función cumple una subred dentro de una VCN?",
+            opciones=[
+                "Organizar recursos de red dentro de un rango CIDR",
+                "Crear usuarios para la consola",
+                "Almacenar copias de seguridad",
+                "Aumentar automáticamente la memoria de una instancia",
+            ],
+            respuesta_correcta="Organizar recursos de red dentro de un rango CIDR",
+            justificacion="Una subred es una división de la VCN con un rango CIDR propio donde se conectan recursos (MOCK).",
+        ),
+        QuizItem(
+            pregunta="¿Qué gateway se utiliza para habilitar conectividad entre una VCN e internet?",
+            opciones=[
+                "Internet Gateway",
+                "Service Gateway",
+                "Dynamic Routing Gateway",
+                "NAT Gateway",
+            ],
+            respuesta_correcta="Internet Gateway",
+            justificacion="El Internet Gateway permite la comunicación directa entre recursos de una VCN y destinos en internet, según sus rutas y reglas de seguridad (MOCK).",
+        ),
     ]
     return OutputSchema(
         status="exito",
@@ -133,7 +173,7 @@ def _mock_quiz(payload: InputSchema) -> OutputSchema:
             items=items,
         ),
         evaluacion_calidad=_base_evaluacion(),
-        almacenamiento_oci=_base_almacenamiento(),
+        almacenamiento_oci=_base_almacenamiento(payload),
     )
 
 
@@ -166,7 +206,7 @@ def _mock_tutorial(payload: InputSchema) -> OutputSchema:
             items=items,
         ),
         evaluacion_calidad=_base_evaluacion(),
-        almacenamiento_oci=_base_almacenamiento(),
+        almacenamiento_oci=_base_almacenamiento(payload),
     )
 
 
@@ -187,7 +227,7 @@ def _mock_resumen_ejecutivo(payload: InputSchema) -> OutputSchema:
             items=items,
         ),
         evaluacion_calidad=_base_evaluacion(),
-        almacenamiento_oci=_base_almacenamiento(),
+        almacenamiento_oci=_base_almacenamiento(payload),
     )
 
 
@@ -209,7 +249,7 @@ def _mock_guion_clase(payload: InputSchema) -> OutputSchema:
             items=items,
         ),
         evaluacion_calidad=_base_evaluacion(),
-        almacenamiento_oci=_base_almacenamiento(),
+        almacenamiento_oci=_base_almacenamiento(payload),
     )
 
 

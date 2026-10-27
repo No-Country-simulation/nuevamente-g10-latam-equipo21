@@ -1,3 +1,6 @@
+import html
+from urllib.parse import urlsplit
+
 import streamlit as st
 
 
@@ -40,7 +43,28 @@ def _select_option(field: str, label: str, default: str, *, disabled: bool) -> s
 	)
 
 
-def render_adaptation_options(*, has_source_document: bool) -> dict[str, str]:
+def _logout_href(logout_url: str | None) -> str | None:
+	"""Devuelve un href seguro para una ruta interna; None si el valor no es seguro (NM-41)."""
+	if not logout_url:
+		return None
+	valor = logout_url.strip()
+	partes = urlsplit(valor)
+	es_ruta_interna = (
+		valor.startswith("/")
+		and not valor.startswith("//")
+		and not partes.scheme
+		and not partes.netloc
+		and "\\" not in valor
+		and not any(caracter.isspace() or ord(caracter) < 32 for caracter in valor)
+	)
+	if not es_ruta_interna:
+		return None
+	return html.escape(valor, quote=True)
+
+
+def render_adaptation_options(
+	*, has_source_document: bool, logout_url: str | None = None
+) -> dict[str, str]:
 	with st.sidebar:
 		st.markdown('<div class="sidebar-brand">N<span>·</span>M</div>', unsafe_allow_html=True)
 		st.markdown("### Parámetros del recurso")
@@ -54,6 +78,13 @@ def render_adaptation_options(*, has_source_document: bool) -> dict[str, str]:
 			st.caption("Carga un documento para habilitar estas opciones.")
 		st.divider()
 		st.markdown('<div class="sidebar-note"><span>FUENTE → CONTENIDO</span><br>La adaptación conserva el anclaje al documento original.</div>', unsafe_allow_html=True)
+		if logout_url:
+			href = _logout_href(logout_url)
+			if href:
+				st.markdown(
+					f'<a class="logout-link" href="{href}" target="_self">Cerrar sesión</a>',
+					unsafe_allow_html=True,
+				)
 
 	return {
 		"perfil_destinatario": profile,

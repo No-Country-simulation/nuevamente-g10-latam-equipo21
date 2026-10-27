@@ -1,7 +1,7 @@
 import json
 from typing import List, Literal, Union
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,8 +50,11 @@ class Settings(BaseSettings):
     # Configuración de Google Gemini
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL_NAME: str = "gemini-3.8-flash"
+    GEMINI_FALLBACK_MODEL_NAME: str = ""
     GEMINI_EMBEDDING_MODEL_NAME: str = "gemini-embedding-001"
-    GEMINI_TIMEOUT_SECONDS: float = 30.0
+    GEMINI_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0, allow_inf_nan=False)
+    DIAGRAM_MAX_IMAGES_PER_DOCUMENT: int = Field(default=10, ge=1)
+    DIAGRAM_MIN_IMAGE_AREA_PIXELS: int = Field(default=10_000, ge=1)
 
     # Vector Store (ChromaDB)
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"
@@ -59,14 +62,21 @@ class Settings(BaseSettings):
     # Recuperación semántica (NM-06)
     RETRIEVAL_TOP_K: int = 5
     RETRIEVAL_SCORE_THRESHOLD: float = 0.35
-    RETRIEVAL_MAX_CONTEXT_TOKENS: int = 2000
+    RETRIEVAL_MAX_CONTEXT_TOKENS: int = 6000
 
-    # Cobertura del documento completo en la recuperación (NM-22)
-    RETRIEVAL_MAX_VENTANAS: int = 5
+    # Cobertura del documento completo en la recuperación (NM-22, NM-33)
+    RETRIEVAL_MAX_VENTANAS: int = 10
     RETRIEVAL_VENTANA_CHARS: int = 2000
+    # NM-33: candidatos que se piden por ventana y fragmentos que se conservan de
+    # los que caen dentro del rango de chunks de esa ventana.
+    RETRIEVAL_VENTANA_CANDIDATOS: int = 8
+    RETRIEVAL_FRAGMENTOS_POR_VENTANA: int = 2
 
     # Verificación de fidelidad (NM-09)
-    FIDELITY_SCORE_THRESHOLD: float = 0.7
+    FIDELITY_SCORE_THRESHOLD: float = Field(default=0.7, ge=0, le=1, allow_inf_nan=False)
+
+    # Filtro preventivo de fuentes muy cortas (NM-32), antes de consumir proveedores.
+    DOCUMENT_MIN_WORDS: int = Field(default=30, ge=1)
 
     # Orquestación multi-agente con LangGraph (NM-D1)
     MULTI_AGENT_MAX_ITERATIONS: int = 3

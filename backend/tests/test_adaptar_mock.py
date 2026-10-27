@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.main import app
 from app.services.adaptacion_service import OBJETO_NO_PERSISTIDO
+from app.services.document_identity import documento_id_desde_contenido
 
 client = TestClient(app)
 
@@ -73,6 +74,17 @@ def test_responde_estructura_completa_por_formato(formato, campos_item_esperados
         assert "tipo_item" not in item
 
 
+def test_mock_quiz_incluye_cuatro_preguntas_con_respuestas_validas():
+    payload = {**PAYLOAD_BASE, "formato_salida": "Quiz"}
+    resp = client.post(ENDPOINT, json=payload)
+
+    assert resp.status_code == 200
+    items = resp.json()["contenido_adaptado"]["items"]
+    assert len(items) == 4
+    assert len({item["pregunta"] for item in items}) == 4
+    assert all(item["respuesta_correcta"] in item["opciones"] for item in items)
+
+
 def test_entrada_invalida_devuelve_shape_de_error_del_contrato():
     payload = {**PAYLOAD_BASE, "formato_salida": "Formato_Que_No_Existe"}
     resp = client.post(ENDPOINT, json=payload)
@@ -117,6 +129,9 @@ def test_mock_no_reporta_una_subida_exitosa_a_oci():
     # El identificador señala el origen simulado y se distingue del flujo real.
     assert almacenamiento["objeto_id"] == "mock-no-persistido"
     assert almacenamiento["objeto_id"] != OBJETO_NO_PERSISTIDO
+    assert almacenamiento["documento_id"] == documento_id_desde_contenido(
+        PAYLOAD_BASE["documento_contenido"]
+    )
 
 
 def test_mock_tutorial_incluye_prerrequisitos():

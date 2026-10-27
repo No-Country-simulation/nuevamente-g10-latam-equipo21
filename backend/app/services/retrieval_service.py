@@ -74,7 +74,41 @@ def _referencia(fragmento: FragmentoRecuperado) -> str:
     for clave in ("pagina", "seccion", "titulo"):
         if clave in fragmento.metadatos:
             partes.append(f"{clave}={fragmento.metadatos[clave]}")
+    if fragmento.metadatos.get("source_type") == "diagram":
+        for clave in ("source_type", "image_index", "image_name"):
+            valor = fragmento.metadatos.get(clave)
+            if valor is not None:
+                partes.append(f"{clave}={valor}")
     return "[Fuente: " + " | ".join(partes) + "]"
+
+
+def _seleccionar_que_caben(
+    coincidencias: list[FragmentoRecuperado],
+    limite: int,
+    contar_tokens: Callable[[str], int],
+) -> tuple[list[FragmentoRecuperado], list[str]]:
+    """Recorre en orden y devuelve (fragmentos incluidos, bloques de texto) hasta el límite."""
+    incluidos: list[FragmentoRecuperado] = []
+    bloques: list[str] = []
+    for fragmento in coincidencias:
+        bloque = f"{_referencia(fragmento)}\n{fragmento.texto}"
+        candidato = "\n\n".join([*bloques, bloque])
+        if contar_tokens(candidato) > limite:
+            break
+        bloques.append(bloque)
+        incluidos.append(fragmento)
+    return incluidos, bloques
+
+
+def fragmentos_que_caben(
+    coincidencias: list[FragmentoRecuperado],
+    *,
+    max_tokens: int | None = None,
+    contar_tokens: Callable[[str], int] = contar_tokens_aproximado,
+) -> list[FragmentoRecuperado]:
+    """Fragmentos que `ensamblar_contexto` incluiría con el mismo límite (para alinear `fuentes`)."""
+    limite = settings.RETRIEVAL_MAX_CONTEXT_TOKENS if max_tokens is None else max_tokens
+    return _seleccionar_que_caben(coincidencias, limite, contar_tokens)[0]
 
 
 def ensamblar_contexto(
@@ -95,13 +129,5 @@ def ensamblar_contexto(
     Devuelve cadena vacía si no hay coincidencias.
     """
     limite = settings.RETRIEVAL_MAX_CONTEXT_TOKENS if max_tokens is None else max_tokens
-
-    bloques: list[str] = []
-    for fragmento in coincidencias:
-        bloque = f"{_referencia(fragmento)}\n{fragmento.texto}"
-        candidato = "\n\n".join([*bloques, bloque])
-        if contar_tokens(candidato) > limite:
-            break
-        bloques.append(bloque)
-
+    _, bloques = _seleccionar_que_caben(coincidencias, limite, contar_tokens)
     return "\n\n".join(bloques)

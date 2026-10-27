@@ -60,10 +60,30 @@ def _contenido(formato: str) -> ContenidoAdaptadoSchema:
     return ContenidoAdaptadoSchema(titulo="Redes en la nube", introduccion_contextualizada="Una introducción breve.", items=items)
 
 
-def _generar(llm, formato="Flashcards", perfil="Principiante", documento=DOCUMENTO):
+_TEXTO_CONCEPTOS = "La VCN usa subredes, un Internet Gateway y Security Lists para controlar el trafico."
+
+
+def _contenido_cubierto(formato: str) -> ContenidoAdaptadoSchema:
+    """Igual que _contenido, mas un item que desarrolla los conceptos clave del documento."""
+    base = _contenido(formato)
+    extra = {
+        "Flashcards": FlashcardItem(frente="Que conceptos aparecen?", dorso=_TEXTO_CONCEPTOS, pista_didactica="Repasalos."),
+        "Quiz": QuizItem(pregunta="Que conceptos aparecen?", opciones=["a", "b", "c", "d"], respuesta_correcta="a", justificacion=_TEXTO_CONCEPTOS),
+        "Tutorial": TutorialItem(paso_numero=2, titulo_paso="Repasar los conceptos", contenido=_TEXTO_CONCEPTOS, codigo_ejemplo=None),
+        "Resumen_Ejecutivo": ResumenItem(punto_clave="Conceptos", descripcion=_TEXTO_CONCEPTOS, impacto_negocio="Mejor comprension."),
+        "Guion_Clase": GuionItem(seccion="Repaso", tiempo_estimado_minutos=2, narracion=_TEXTO_CONCEPTOS, notas_visuales="Diagrama."),
+    }[formato]
+    return ContenidoAdaptadoSchema(
+        titulo=base.titulo,
+        introduccion_contextualizada=base.introduccion_contextualizada,
+        items=[*base.items, extra],
+    )
+
+
+def _generar(llm, formato="Flashcards", perfil="Principiante", documento=DOCUMENTO, contenido=None):
     return generar_metadatos_aprendizaje(
         documento_contenido=documento,
-        contenido_adaptado=_contenido(formato),
+        contenido_adaptado=contenido if contenido is not None else _contenido_cubierto(formato),
         perfil_destinatario=perfil,
         formato_salida=formato,
         llm_provider=llm,
@@ -112,13 +132,14 @@ def test_no_repite_conceptos():
 def test_limita_a_ocho_conceptos():
     documento = " ".join(f"termino{i} explicacion" for i in range(12))
     llm = LLMFalso(MetadatosLLM(conceptos_clave=[f"termino{i}" for i in range(12)], prerrequisitos=[]))
-    meta = _generar(llm, documento=documento)
+    contenido = _contenido_con_textos(" ".join(f"termino{i}" for i in range(12)))
+    meta = _generar(llm, documento=documento, contenido=contenido)
     assert len(meta.conceptos_clave) == 8
 
 
-def test_reintenta_una_vez_si_quedan_menos_de_tres():
+def test_reintenta_una_vez_si_ningun_concepto_es_verificable():
     llm = LLMFalso(
-        MetadatosLLM(conceptos_clave=["VCN", "Kubernetes", "Docker"], prerrequisitos=[]),
+        MetadatosLLM(conceptos_clave=["Kubernetes", "Docker", "Blockchain"], prerrequisitos=[]),
         _llm_ok(),
     )
     meta = _generar(llm)
@@ -126,8 +147,8 @@ def test_reintenta_una_vez_si_quedan_menos_de_tres():
     assert len(meta.conceptos_clave) == 4
 
 
-def test_falla_si_tras_los_intentos_no_hay_tres_conceptos_verificables():
-    malo = MetadatosLLM(conceptos_clave=["VCN", "Kubernetes", "Docker"], prerrequisitos=[])
+def test_falla_si_tras_los_intentos_ningun_concepto_es_verificable():
+    malo = MetadatosLLM(conceptos_clave=["Kubernetes", "Docker"], prerrequisitos=[])
     llm = LLMFalso(malo, malo)
     with pytest.raises(MetadatosInsuficientesError):
         _generar(llm)
@@ -207,4 +228,69 @@ def test_adaptador_real_delega_con_los_datos_del_payload():
     assert recibido["documento_contenido"] == DOCUMENTO
     assert recibido["contenido_adaptado"] is contenido
     assert recibido["llm_provider"] is llm
-    
+
+
+def _contenido_con_textos(*textos):
+    items = [
+        TutorialItem(paso_numero=i + 1, titulo_paso=f"Paso {i + 1}", contenido=t, codigo_ejemplo=None)
+        for i, t in enumerate(textos)
+    ]
+    return ContenidoAdaptadoSchema(titulo="Redes", introduccion_contextualizada="Intro.", items=items)
+
+
+def test_prefiere_conceptos_que_aparecen_en_los_items():
+    llm = LLMFalso(
+        MetadatosLLM(
+            conceptos_clave=["VCN", "Subredes", "Internet Gateway", "Security Lists"],
+            prerrequisitos=[],
+        )
+    )
+    meta = generar_metadatos_aprendizaje(
+        documento_contenido=DOCUMENTO,
+        contenido_adaptado=_contenido_con_textos(
+            "La VCN se divide en subredes.", "El Internet Gateway da salida a Internet."
+        ),
+        perfil_destinatario="Principiante",
+        formato_salida="Tutorial",
+        llm_provider=llm,
+    )
+    assert meta.conceptos_clave == ["VCN", "Subredes", "Internet Gateway"]
+
+
+def test_dos_conceptos_en_los_items_no_alcanzan_el_minimo():
+    malo = MetadatosLLM(
+        conceptos_clave=["VCN", "Subredes", "Internet Gateway", "Security Lists"],
+        prerrequisitos=[],
+    )
+    llm = LLMFalso(malo, malo)
+    contenido = _contenido_con_textos("La VCN se divide en subredes.")
+    with pytest.raises(MetadatosInsuficientesError):
+        _generar(llm, formato="Tutorial", contenido=contenido)
+    assert llm.llamadas == 2
+
+
+def test_concepto_calza_con_las_palabras_en_otro_orden():
+    llm = LLMFalso(
+        MetadatosLLM(conceptos_clave=["VCN", "Subredes", "Internet Gateway"], prerrequisitos=[])
+    )
+    contenido = _contenido_con_textos(
+        "Configura el gateway de internet de la VCN.", "Las subredes de la VCN."
+    )
+    meta = _generar(llm, formato="Tutorial", contenido=contenido)
+    assert meta.conceptos_clave == ["VCN", "Subredes", "Internet Gateway"]
+
+def test_concepto_con_palabras_repartidas_en_items_distintos_no_calza():
+    malo = MetadatosLLM(conceptos_clave=["Internet Gateway"], prerrequisitos=[])
+    llm = LLMFalso(malo, malo)
+    contenido = _contenido_con_textos("El gateway de la VCN.", "Se accede a Internet.")
+    with pytest.raises(MetadatosInsuficientesError):
+        _generar(llm, formato="Tutorial", contenido=contenido)
+    assert llm.llamadas == 2
+
+
+def test_falla_si_los_conceptos_estan_en_el_documento_pero_en_ningun_item():
+    malo = MetadatosLLM(conceptos_clave=["VCN", "Subredes", "Internet Gateway"], prerrequisitos=[])
+    llm = LLMFalso(malo, malo)
+    with pytest.raises(MetadatosInsuficientesError):
+        _generar(llm, formato="Tutorial", contenido=_contenido_con_textos("Texto sin relacion."))
+    assert llm.llamadas == 2

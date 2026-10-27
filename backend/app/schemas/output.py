@@ -1,6 +1,12 @@
-from typing import Literal, Union
-
-from pydantic import Field, StrictFloat, StrictInt, StrictStr, model_validator
+from typing import Literal, Optional, Union
+from pydantic import (
+    Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    model_validator,
+)
 
 from app.schemas.base import PublicSchema
 from app.schemas.content import (
@@ -56,6 +62,11 @@ class ContenidoAdaptadoSchema(PublicSchema):
     )
 
 
+class AfirmacionNoRespaldadaSchema(PublicSchema):
+    item: StrictInt = Field(ge=0, description="0: introducción; 1..N: posición del item.")
+    texto: StrictStr = Field(min_length=1)
+
+
 class EvaluacionCalidadSchema(PublicSchema):
     anclaje_fuente_score: StrictFloat = Field(
         ...,
@@ -67,8 +78,21 @@ class EvaluacionCalidadSchema(PublicSchema):
 
     observaciones: StrictStr
 
+    # Null permite leer paquetes anteriores sin atribuirles una política no aplicada.
+    umbral_fidelidad: StrictFloat | None = Field(default=None, ge=0, le=1)
+    requiere_revision: StrictBool | None = None
+    afirmaciones_no_respaldadas: list[AfirmacionNoRespaldadaSchema] = Field(default_factory=list)
+
 
 class AlmacenamientoOCISchema(PublicSchema):
+    documento_id: Optional[StrictStr] = Field(
+        default=None,
+        description="Identificador estable del documento original",
+    )
+    objeto_origen_id: Optional[StrictStr] = Field(
+        default=None,
+        description="Objeto OCI del documento original, si fue persistido",
+    )
     bucket: StrictStr = Field(
         ...,
         min_length=1,

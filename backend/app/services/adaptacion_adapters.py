@@ -19,8 +19,9 @@ Quien consuma la respuesta debe decidir por status_upload, nunca por objeto_id.
 """
 
 import hashlib
-import math
+import json
 import logging
+import math
 from functools import lru_cache
 
 from app.core.config import settings
@@ -38,15 +39,46 @@ from app.services.adaptacion_service import (
     ContextoRecuperado,
     FuenteContexto,
 )
+from app.services.chunking import TextChunk
+from app.services.document_identity import documento_id_desde_contenido
 
 logger = logging.getLogger("nuevamente.adaptacion")
 
 CONSULTA_MAX_CHARS = 500
 
 
-def documento_id_desde_contenido(contenido: str) -> str:
-    """El contrato no trae documento_id: se deriva del contenido (mismo texto -> mismo id)."""
-    return "doc-" + hashlib.sha256(contenido.encode("utf-8")).hexdigest()[:16]
+def documento_id_indice_desde_payload(payload) -> str:
+    """Identidad del índice, incluyendo diagramas cuando forman parte del contexto.
+
+    Sin diagramas conserva exactamente el identificador histórico. Si dos cargas
+    extraen el mismo texto pero solo una contiene imágenes, deben ocupar índices
+    distintos para no reutilizar por error una versión que carece de esos chunks.
+    """
+    base_id = documento_id_desde_contenido(payload.documento_contenido)
+    diagramas = getattr(payload, "diagramas", None) or []
+    if not diagramas:
+        return base_id
+
+    representacion = sorted(
+        (
+            {
+                "description": diagrama.description,
+                "image_index": diagrama.image_index,
+                "image_name": diagrama.image_name,
+                "page_number": diagrama.page_number,
+            }
+            for diagrama in diagramas
+        ),
+        key=lambda item: (
+            item["page_number"] or 0,
+            item["image_index"] or 0,
+            item["image_name"] or "",
+            item["description"] or "",
+        ),
+    )
+    canonico = json.dumps(representacion, ensure_ascii=False, sort_keys=True)
+    sufijo = hashlib.sha256(canonico.encode("utf-8")).hexdigest()[:12]
+    return f"{base_id}-diag-{sufijo}"
 
 
 def construir_consulta(titulo: str, contenido: str) -> str:
@@ -94,6 +126,11 @@ def construir_consultas(titulo: str, contenido: str) -> list[str]:
     return [construir_consulta(titulo, v) for v in dividir_en_ventanas(contenido, cantidad)]
 
 
+def _chunk_index(fragmento) -> int | None:
+    valor = (getattr(fragmento, "metadatos", None) or {}).get("chunk_index")
+    return valor if isinstance(valor, int) else None
+
+
 class ContextoRealAdapter:
     """NM-05 (indexar) + NM-06 (recuperar). Todo inyectable para tests."""
 
@@ -127,31 +164,93 @@ class ContextoRealAdapter:
         return self._vector_store
 
     def _recuperar_por_ventanas(self, consultas: list[str], doc_id: str) -> list:
-        """Recupera por sección y une sin duplicados, en orden de documento (NM-22).
+        """Recupera por sección y une sin duplicados, en orden de documento (NM-22, NM-33).
 
-        El top_k global se reparte entre las secciones (mínimo 1 por sección), de modo
-        que el total de fragmentos queda en max(RETRIEVAL_TOP_K, secciones) y entra en
-        RETRIEVAL_MAX_CONTEXT_TOKENS sin que ensamblar_contexto corte los últimos.
+        Cada ventana pide RETRIEVAL_VENTANA_CANDIDATOS fragmentos y conserva al menos
+        RETRIEVAL_FRAGMENTOS_POR_VENTANA (hasta el tamaño proporcional de su rango, acotado por
+        el presupuesto de contexto) cuyo chunk_index cae en el rango de esa ventana
+        (proporcional al total de chunks del documento). Así una ventana no puede traer
+        fragmentos de otra zona. Si hay chunk_index pero ninguno cae en el rango, la
+        ventana no aporta nada. Si los fragmentos no traen chunk_index, usa el
+        comportamiento previo: los primeros max(1, TOP_K // ventanas).
+        En PDFs de varias páginas el rango es aproximado (ventanas por caracteres,
+        chunks por página).
         """
-        por_ventana = max(1, settings.RETRIEVAL_TOP_K // len(consultas))
-        vistos: set[str] = set()
-        unidos = []
-        for consulta in consultas:
-            for fragmento in self._recuperar(
+        ventanas = len(consultas)
+        previo = max(1, settings.RETRIEVAL_TOP_K // ventanas)
+        total_chunks = self._store.count_document(doc_id)
+        # NM-33: el cupo de cada ventana crece con el tamaño de su rango; nunca baja del valor configurado.
+        cupo_base = math.ceil(total_chunks / ventanas)
+        por_ventana = max(1, settings.RETRIEVAL_FRAGMENTOS_POR_VENTANA, cupo_base)
+        candidatos_k = max(settings.RETRIEVAL_VENTANA_CANDIDATOS, previo, por_ventana)
+
+        from app.services.retrieval_service import fragmentos_que_caben
+
+        zonas: list[list] = []
+        diagramas: dict[str, object] = {}
+        for i, consulta in enumerate(consultas):
+            candidatos = self._recuperar(
                 consulta=consulta,
                 vector_store=self._vector_store,
                 documento_id=doc_id,
-                top_k=por_ventana,
-            ):
+                top_k=candidatos_k,
+            )
+            candidatos_texto = []
+            for fragmento in candidatos:
+                metadatos = getattr(fragmento, "metadatos", None) or {}
+                if metadatos.get("source_type") == "diagram":
+                    diagramas.setdefault(fragmento.chunk_id, fragmento)
+                else:
+                    candidatos_texto.append(fragmento)
+            lo = i * total_chunks // ventanas
+            hi = (i + 1) * total_chunks // ventanas
+            en_rango = [
+                f for f in candidatos_texto
+                if _chunk_index(f) is not None and lo <= _chunk_index(f) < hi
+            ]
+            hay_indices = any(_chunk_index(f) is not None for f in candidatos_texto)
+            if en_rango:
+                zonas.append(en_rango[:por_ventana])
+            elif hay_indices:
+                # Hay indices, pero ninguno cae en esta zona: no se rellena con otras zonas.
+                logger.warning(
+                    "Ventana %d/%d sin candidatos en el rango de chunks [%d, %d)",
+                    i + 1, ventanas, lo, hi,
+                )
+                zonas.append([])
+            else:
+                zonas.append(candidatos_texto[:previo])
+
+        # Los diagramas se agregan al final del índice, pero su página puede estar
+        # en cualquier ventana. Se evalúan como una zona semántica independiente:
+        # así no se descartan por un rango posicional que solo representa texto.
+        if diagramas:
+            zonas.insert(0, list(diagramas.values()))
+
+        def _orden(f):
+            idx = _chunk_index(f)
+            return idx if idx is not None else 0
+
+        # NM-33: presupuesto global. Se reparte por rondas (el mejor de cada zona, luego el
+        # segundo, etc.) y solo se acepta lo que sigue cabiendo en el contexto final.
+        elegidos: list = []
+        vistos: set[str] = set()
+        for ronda in range(max((len(z) for z in zonas), default=0)):
+            for zona in zonas:
+                if ronda >= len(zona):
+                    continue
+                fragmento = zona[ronda]
                 if fragmento.chunk_id in vistos:
                     continue
-                vistos.add(fragmento.chunk_id)
-                unidos.append(fragmento)
-        return unidos
+                prueba = sorted([*elegidos, fragmento], key=_orden)
+                if len(fragmentos_que_caben(prueba)) == len(prueba):
+                    elegidos = prueba
+                    vistos.add(fragmento.chunk_id)
+        return elegidos
 
     def obtener_contexto(self, payload) -> ContextoRecuperado:
         self._init_real()
-        doc_id = documento_id_desde_contenido(payload.documento_contenido)
+        doc_id = documento_id_indice_desde_payload(payload)
 
         # Indexa solo si el documento aún no está (evita re-embeber: cuota de Gemini).
         if self._store.count_document(doc_id) == 0:
@@ -159,6 +258,20 @@ class ContextoRealAdapter:
                 document_id=doc_id,
                 pages=_paginas_para_indexar(payload),
             )
+            for diagram in getattr(payload, "diagramas", []):
+                chunks.append(
+                    TextChunk(
+                        document_id=doc_id,
+                        chunk_index=len(chunks),
+                        text=diagram.description,
+                        page_number=diagram.page_number,
+                        char_start=0,
+                        char_end=len(diagram.description),
+                        source_type="diagram",
+                        image_index=diagram.image_index,
+                        image_name=diagram.image_name,
+                    )
+                )
             self._store.index_chunks(chunks)
 
         consultas = construir_consultas(payload.documento_titulo, payload.documento_contenido)
@@ -170,6 +283,8 @@ class ContextoRealAdapter:
             )
         else:
             fragmentos = self._recuperar_por_ventanas(consultas, doc_id)
+        from app.services.retrieval_service import fragmentos_que_caben
+        fragmentos = fragmentos_que_caben(fragmentos)
         texto = self._ensamblar(fragmentos) if fragmentos else ""
         fuentes = [
             FuenteContexto(
@@ -237,7 +352,7 @@ class VerificadorRealAdapter:
         if self._llm is None:
             self._llm = _llm_provider_compartido()
         return self._evaluar(
-            documento_id=documento_id_desde_contenido(payload.documento_contenido),
+            documento_id=documento_id_indice_desde_payload(payload),
             contenido_adaptado=contenido,
             vector_store=self._contexto.vector_store,
             llm_provider=self._llm,

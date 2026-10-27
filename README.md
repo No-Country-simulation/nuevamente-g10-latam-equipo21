@@ -4,6 +4,13 @@ Sistema inteligente de adaptación y generación de contenido educativo desarrol
 
 NuevaMente transforma documentación técnica en materiales didácticos adaptados al perfil de quien aprende, el formato deseado, el sector de aplicación y el nivel de detalle. El proyecto combina recuperación semántica (RAG), Google Gemini, evaluación de fidelidad y persistencia en OCI Object Storage.
 
+## Demo
+
+[Probar NuevaMente](https://nuevamente.sachadev.me)
+
+El acceso requiere usuario y contraseña. Solicitá las credenciales al equipo por privado.
+Consultá la [guía de acceso](deploy/oci/DEMO_ACCESS.md) para más información.
+
 ## Problema que resuelve
 
 La documentación técnica suele asumir conocimientos previos y presentar el mismo contenido a públicos con necesidades distintas. NuevaMente permite convertir una fuente técnica en tutoriales, flashcards, cuestionarios, resúmenes ejecutivos o guiones de clase, manteniendo el contenido anclado al documento original.
@@ -56,9 +63,47 @@ endpoint -> servicio de adaptación -> RAG / Gemini / evaluación / metadatos
                                 \-> servicio de almacenamiento -> OCI
 ```
 
-El flujo lineal es el recorrido principal del endpoint del MVP. El servicio multi-agente implementado con LangGraph reutiliza retrieval, generación y evaluación para permitir ciclos de revisión controlados, pero todavía se ejecuta mediante un script de comparación y no está seleccionable desde el endpoint integral.
+El endpoint utiliza el flujo lineal por defecto (`USE_MULTIAGENT=false`). Con `USE_MOCK_LLM=false` y `USE_MULTIAGENT=true`, selecciona el servicio multi-agente de LangGraph, que reutiliza retrieval, generación y evaluación para permitir ciclos de revisión controlados. La selección del flujo depende de la configuración del entorno desplegado.
 
 La descripción completa y los contratos de datos se encuentran en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+### Advertencias de fidelidad (NM-32)
+
+La política se aplica en el backend, tanto al flujo lineal como al multiagente,
+sin modificar el cálculo de fidelidad de NM-09.
+`FIDELITY_SCORE_THRESHOLD` (por defecto `0.7`, entre 0 y 1) determina cuándo
+el score queda por debajo del mínimo. Igualar el umbral no se considera estar por debajo.
+Además, cualquier afirmación que el verificador marque sin respaldo requiere revisión,
+aunque el score global supere ese mínimo.
+
+El bloque `evaluacion_calidad` agrega estos campos:
+
+| Campo | Significado |
+|---|---|
+| `umbral_fidelidad` | Umbral aplicado por el backend. |
+| `requiere_revision` | `true` si el score está bajo el umbral o hay afirmaciones sin respaldo. |
+| `afirmaciones_no_respaldadas` | Lista de `{ "item": 1, "texto": "..." }`. El índice 0 representa la introducción y 1..N la posición del item. |
+
+Streamlit muestra el score como porcentaje con un indicador de color y texto respecto
+del umbral. Los resultados observados muestran una advertencia, no una confirmación
+verde de generación. En Quiz se marca visiblemente cada pregunta observada y su respuesta
+se presenta como propuesta pendiente de revisión. Si solo hay un score bajo, sin detalle
+por item, se advierte sobre todas las preguntas. NM-32 no agrega regeneración ni elimina
+items. El flujo multiagente conserva sus ciclos de revisión de NM-28; las advertencias
+se aplican al resultado final, incluso si agotó los reintentos o conserva afirmaciones
+sin respaldo con un score alto. El detalle se conserva en la respuesta,
+en el JSON descargable y en el paquete enviado a OCI.
+
+Antes de indexar o generar, ambos flujos reales exigen `DOCUMENT_MIN_WORDS` palabras (por defecto
+`30`, configurable con un entero positivo). Si no se alcanza, devuelve HTTP 422 con
+`DOCUMENTO_INSUFICIENTE` y la interfaz pide ampliar la fuente. Es un filtro preventivo
+de longitud común a los cinco formatos, no una garantía de suficiencia semántica:
+superarlo no asegura que el documento permita responder cualquier pregunta.
+La evaluación posterior sigue siendo necesaria y depende del verificador.
+
+Los paquetes antiguos pueden tener los nuevos campos ausentes o nulos: se muestran
+sin decisión de calidad, sin asumir un umbral ni aprobarlos. El modo mock devuelve
+una evaluación sintética, no valida la suficiencia de la fuente ni llama a proveedores.
 
 ## Tecnologías principales
 
@@ -81,9 +126,9 @@ La descripción completa y los contratos de datos se encuentran en [`docs/ARCHIT
 |---|---|
 | Backend FastAPI | Implementado: ingesta, RAG, generación, fidelidad, metadatos y persistencia OCI. |
 | Pipeline lineal | Integrado en `POST /api/v1/adaptar-contenido`. |
-| Flujo multi-agente | Implementado y probado mediante script; exposición desde el endpoint en revisión en NM-28 ([#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83)), todavía no integrada. |
+| Flujo multi-agente | Integrado en el endpoint mediante NM-28 ([#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83)), seleccionable con `USE_MULTIAGENT=true` y `USE_MOCK_LLM=false`. |
 | Frontend Streamlit | Implementado y conectado a los endpoints de extracción y adaptación de FastAPI. |
-| Despliegue OCI Compute | Integrado mediante NM-D2 ([#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60)): Streamlit público, FastAPI sin publicación directa y persistencia real en Object Storage. Validación funcional con un documento corto de 1112 bytes y un escenario Principiante/Tutorial. |
+| Despliegue OCI Compute | Streamlit con acceso HTTPS y autenticación, FastAPI sin publicación directa y persistencia real en Object Storage. Validación funcional con un documento corto de 1112 bytes y un escenario Principiante/Tutorial. |
 | Vínculo entre original y paquete | Pendiente de completar en NM-27: los objetos se persisten, pero el paquete todavía no referencia al original. |
 | Contrato uniforme de errores | Pendiente en NM-21 para los casos que aún responden fuera del sobre común. |
 
@@ -199,6 +244,7 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 | `PROJECT_NAME` | `NuevaMente API` | Nombre expuesto por FastAPI. |
 | `VERSION` | `0.1.0` | Versión informativa de la API. |
 | `USE_MOCK_LLM` | `true` | Activa la respuesta mock sin llamadas externas. |
+| `USE_MULTIAGENT` | `false` | Selecciona el grafo multiagente cuando el modo mock está desactivado. Ambos flujos reales aplican la política de NM-32. |
 | `CORS_ORIGINS` | `["http://localhost:8501"]` | Orígenes autorizados para el frontend. |
 
 ### Gemini y RAG
@@ -207,14 +253,23 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 |---|---|---|
 | `GEMINI_API_KEY` | `tu_api_key_aqui` | Credencial de Gemini; obligatoria para el pipeline real. |
 | `GEMINI_MODEL_NAME` | `gemini-3.8-flash` | Modelo generativo. |
+| `GEMINI_FALLBACK_MODEL_NAME` | vacío | Modelo de respaldo opcional ante cuota (429) o indisponibilidad (503); debe ser distinto del principal. |
 | `GEMINI_EMBEDDING_MODEL_NAME` | `gemini-embedding-001` | Modelo de embeddings. |
 | `GEMINI_TIMEOUT_SECONDS` | `30` | Tiempo máximo por llamada al proveedor. |
+| `DIAGRAM_MAX_IMAGES_PER_DOCUMENT` | `10` | Máximo de imágenes interpretadas por PDF antes de rechazar la solicitud. |
+| `DIAGRAM_MIN_IMAGE_AREA_PIXELS` | `10000` | Área mínima para interpretar una imagen y descartar íconos pequeños. |
 | `CHROMA_PERSIST_DIRECTORY` | `./chroma_db` | Directorio local de ChromaDB. |
 | `RETRIEVAL_TOP_K` | `5` | Cantidad máxima de fragmentos recuperados. |
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.35` | Umbral mínimo de similitud. |
 | `RETRIEVAL_MAX_CONTEXT_TOKENS` | `2000` | Límite del contexto ensamblado. |
 | `FIDELITY_SCORE_THRESHOLD` | `0.7` | Umbral de fidelidad contra la fuente. |
+| `DOCUMENT_MIN_WORDS` | `30` | Mínimo preventivo de palabras antes de indexar y generar en el flujo real. |
 | `MULTI_AGENT_MAX_ITERATIONS` | `3` | Máximo de iteraciones Redactor-Crítico del flujo multi-agente. |
+
+Si se configura un modelo de respaldo, `GeminiProvider` lo utiliza solo cuando el
+principal falla por cuota o indisponibilidad. Los demás errores mantienen el
+comportamiento anterior. Si ambos modelos fallan, la API conserva el error
+`LLM_NO_DISPONIBLE`; el modelo utilizado y el motivo del cambio quedan solo en logs.
 
 ### OCI Object Storage
 
@@ -285,6 +340,10 @@ Las fallas de autenticación o autorización contra OCI se consideran errores de
 ## Despliegue en OCI Compute
 
 El despliegue validado ejecuta FastAPI y Streamlit como contenedores separados.
+La demo cuenta con HTTPS y autenticación mediante usuario y contraseña. El acceso
+de evaluadores, las pruebas externas y la limpieza administrativa del bucket se
+describen en [la guía de acceso protegido](deploy/oci/DEMO_ACCESS.md).
+
 Traefik publica únicamente la interfaz. FastAPI no publica puertos en el host
 ni tiene una ruta habilitada en Traefik; el frontend lo consume mediante la red
 `backend_internal`. El backend también está conectado a `proxy` para tener
@@ -504,7 +563,7 @@ Ejemplo de entrada inválida:
 
 La tabla distingue lo que ya está integrado de lo aprobado o todavía pendiente. No se asignan fechas de integración a cambios que aún no ingresaron en `develop`.
 
-Estados revisados al 14 de octubre de 2026.
+Estados revisados al 27 de octubre de 2026 (UTC).
 
 | Fecha de integración (UTC) | Ticket | Entrega | Responsable | PR o referencia | Revisión | Estado |
 |---|---|---|---|---|---|---|
@@ -523,35 +582,37 @@ Estados revisados al 14 de octubre de 2026.
 | 5 oct 2026 | NM-13 | Carga de documentos y selección de parámetros desde Streamlit. | Julio Diaz | [#58](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/58) | Leandro Melchiori | Integrado |
 | 5 oct 2026 | NM-14 | Visualización de los cinco formatos educativos. | Ever Ayala | [#59](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/59) | Leandro Melchiori | Integrado |
 | 8 oct 2026 | NM-15 | Descarga del paquete educativo en JSON. | Gustavo | [#61](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/61) | Leandro Melchiori / Julio Diaz | Integrado |
-| — | NM-16 | README, arquitectura, instalación y documentación del proyecto. | Leandro Melchiori | [#57](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/57), [#65](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/65) | [Gustavo: aprobación de la entrega base](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/57#pullrequestreview-5403108877) | Actualización en draft; pendiente de aprobación e integración |
+| 3 y 15 oct 2026 | NM-16 | README, arquitectura, instalación y documentación del proyecto. | Leandro Melchiori | [#57](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/57), [#65](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/65) | Gustavo / Ever Ayala | Integrado |
 | — | NM-17 | Tres escenarios y guion de demostración. | Bianca Zorio | [Issue #23](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/23) | — | Ticket cerrado; pendiente de enlazar las evidencias de demo |
 | 29 sep 2026 | NM-18 | Endpoint mock para desbloquear el frontend. | Gustavo | [#33](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/33) | Leandro Melchiori | Integrado |
 | 7 y 8 oct 2026 | NM-19 | Estado de sesión y conservación del resultado en Streamlit. | Julio Diaz | [#66](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/66), [#68](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/68) | Leandro Melchiori | Integrado |
 | 3 oct 2026 | NM-20 | Corrección del estado de persistencia informado por el mock. | Gustavo | [#56](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/56) | Leandro Melchiori | Integrado |
-| — | NM-21 | Contrato uniforme de errores en todos los endpoints. | Hernan Rojas | [Issue #48](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/48) | — | Abierto y asignado; pendiente de integración |
-| 8 oct 2026 | NM-22 | Recuperación de documentos largos por ventanas. | Gustavo | [#63](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/63), [#69](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/69) | Leandro Melchiori | Integrado |
+| 19 oct 2026 | NM-21 | Contrato uniforme de errores en todos los endpoints. | Hernan Rojas | [#84](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/84) | Leandro Melchiori / Ever Ayala | Integrado |
+| 8 oct 2026 | NM-22 | Recuperación de documentos largos por ventanas. | Gustavo | [#63](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/63), [#69](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/69) | Leandro Melchiori / Ever Ayala | Integrado |
 | 8 oct 2026 | NM-23 | Trazabilidad de la página de origen. | Hernan Rojas | [#62](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/62) | Leandro Melchiori | Integrado |
 | 8 oct 2026 | NM-24 | Tipado estricto y validación de items según formato. | Leandro Melchiori | [#64](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/64) | Hernan Rojas | Integrado |
 | 8 oct 2026 | NM-25 | Validación de configuración y protección de credenciales. | Ever Ayala | [#67](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/67) | Leandro Melchiori | Integrado |
-| — | NM-26 | Integración de `develop` en `main`, tag y limpieza de ramas. | Leandro Melchiori | [Issue #53](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/53) | — | Pendiente de la entrega final |
-| — | NM-27 | Persistencia end-to-end y vínculo entre original y paquete. | Miguel Acosta | [#70](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/70) | — | En revisión; requiere completar criterios |
-| — | NM-28 | Exposición del flujo multiagente desde el endpoint. | Gustavo | [Issue #55](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/55), [#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83) | — | En revisión; no integrado |
+| 19 oct 2026 | NM-26 | Integración de `develop` en `main`, tag y limpieza de ramas. | Leandro Melchiori | [#88](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/88) | Ever Ayala | Pase a `main` integrado; tag y limpieza de ramas pendientes |
+| 25 oct 2026 | NM-27 | Persistencia end-to-end y vínculo entre original y paquete. | Miguel Acosta | [#70](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/70) | Leandro Melchiori | Integrado |
+| 16 oct 2026 | NM-28 | Exposición del flujo multiagente desde el endpoint. | Gustavo | [#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83) | Ever Ayala | Integrado |
+| 19 oct 2026 | NM-29 | Procesamiento de embeddings en lotes de hasta 100 fragmentos. | Ever Ayala | [#87](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/87) | Leandro Melchiori | Integrado |
+| 23 oct 2026 | NM-30 | Errores controlados, nombres originales y validación de documentos vacíos. | Ever Ayala | [#98](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/98) | Leandro Melchiori | Integrado |
+| 22 oct 2026 | NM-31 | Tema claro consistente y texto legible en los componentes de Streamlit. | Gustavo | [#103](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/103) | Ever Ayala / Leandro Melchiori | Integrado |
+| 22 oct 2026 | NM-32 | Advertencias de fidelidad y contenido sin respaldo documental. | Leandro Melchiori | [#90](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/90) | Ever Ayala | Integrado |
+| 24 oct 2026 | NM-33 | Cobertura completa del documento, cantidad de ítems y conceptos clave respaldados. | Gustavo | [#91](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/91) | Ever Ayala / Leandro Melchiori | Integrado |
+| 16 oct 2026 | NM-34 | Prompts con impacto de negocio respaldado y registro de idioma consistente. | Gustavo | [#85](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/85) | Ever Ayala | Integrado |
+| 24 oct 2026 | NM-35 | Coherencia del resultado con el archivo y los parámetros actuales. | Alcides Perez | [#101](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/101) | Leandro Melchiori | Integrado |
+| 24 oct 2026 | NM-36 | Errores amigables, validación temprana y espera informada. | Miguel Acosta | [#102](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/102) | Ever Ayala / Leandro Melchiori | Integrado |
+| 19 oct 2026 | NM-37 | Prerrequisitos visibles en el paquete educativo. | Gustavo | [#92](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/92) | Leandro Melchiori / Ever Ayala | Integrado |
+| 19 oct 2026 | NM-38 | Estado de la API en el pie, sin exponer su URL. | Hernan Rojas | [#86](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/86) | Leandro Melchiori / Ever Ayala | Integrado |
+| 19 oct 2026 | NM-39 | Protección de la demo con HTTPS y autenticación. | Leandro Melchiori | [#93](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/93) | Ever Ayala | Integrado |
+| 20 oct 2026 | NM-40 | Modelo de respaldo para Gemini ante cuota o indisponibilidad. | Leandro Melchiori | [#100](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/100) | Ever Ayala | Integrado |
+| 22 oct 2026 | NM-41 | Cierre de sesión seguro desde la interfaz desplegada. | Hernan Rojas | [#99](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/99) | Leandro Melchiori / Ever Ayala | Integrado |
 | 1 oct 2026 | NM-D1 | Flujo multiagente con Investigador, Redactor y Crítico. | Ever Ayala | [#45](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/45) | Leandro Melchiori | Integrado |
-| 14 oct 2026 | NM-D2 | Despliegue de Streamlit y FastAPI en OCI Compute. | Leandro Melchiori | [#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60) | [Gustavo: aprobación](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60#pullrequestreview-5512508948) | Integrado |
-| — | NM-D3 | Quiz interactivo con retroalimentación inmediata. | Julio Diaz | [Issue #26](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/26) | — | En desarrollo según la revisión del equipo; issue abierto, no integrado |
-| — | NM-D4 | Interpretación de diagramas técnicos. | Jeampiero Gonzalez | [Issue #27](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/27), [#82](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/82) | — | En revisión; no integrado |
-| — | NM-D5 | Exportación a Markdown, PDF y CSV para Anki. | Hernan Rojas | [Issue #28](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/28) | — | Opcional; no incluido en la entrega actual |
-
-Los tickets organizativos iniciales del repositorio y del equipo están cerrados y permanecen disponibles en el historial de issues de GitHub.
-
-NM-17 figura cerrado en GitHub. Queda pendiente incorporar a esta documentación
-los enlaces al documento fuente y a los tres JSON de demostración: no se
-localizaron en esta rama ni en `main`, ni en los comentarios del ticket. El
-cierre del issue no sustituye la verificación de esas evidencias.
-
-Las mejoras posteriores NM-29 a NM-39 se siguen en el tablero del proyecto y
-en los [issues del repositorio](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues).
-No se incluyen como funcionalidades integradas hasta que se fusionen sus PR.
+| 14 oct 2026 | NM-D2 | Despliegue de Streamlit y FastAPI en OCI Compute. | Leandro Melchiori | [#60](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/60) | Gustavo / Ever Ayala | Integrado |
+| 23 oct 2026 | NM-D3 | Quiz interactivo con retroalimentación inmediata. | Julio Diaz | [#89](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/89) | Ever Ayala / Leandro Melchiori | Integrado |
+| 27 oct 2026 | NM-D4 | Interpretación de diagramas técnicos. | Jeampiero Gonzalez | [Issue #27](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/issues/27), [#82](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/82), [#104](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/104) | Ever Ayala / Gustavo | Integrado; #104 reemplaza #82 |
+| 20 oct 2026 | NM-D5 | Exportación a Markdown, PDF y CSV para Anki. | Hernan Rojas | [#97](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/97) | Leandro Melchiori / Ever Ayala | Integrado |
 
 Las ramas de funcionalidad se crean desde `develop` con el formato `feature/NM-XX-descripcion`. Los cambios ingresan mediante pull request y requieren la revisión de otro integrante. Consulta [`CONTRIBUTING.md`](CONTRIBUTING.md), el [historial de `develop`](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/commits/develop/) y la vista de [contribuidores](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/graphs/contributors) para auditar la información.
 

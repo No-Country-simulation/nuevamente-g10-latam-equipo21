@@ -11,27 +11,17 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 import oci
+import oci.exceptions
 
 from app.core.config import Settings, settings
 from app.core.errors import OCIAuthenticationError
 from app.core.request_context import get_request_id
 from app.schemas.input import InputSchema
 from app.schemas.output import AlmacenamientoOCISchema, OutputSchema
+from app.services.document_identity import documento_id_desde_contenido
 
 
 logger = logging.getLogger(__name__)
-
-def _is_oci_authentication_error(error: Exception) -> bool:
-    """
-    Identifica rechazos de autenticación/autorización devueltos por OCI.
-
-    401: credenciales inválidas o no autenticadas.
-    403: identidad autenticada sin autorización para acceder al recurso.
-    """
-    return (
-        isinstance(error, oci.exceptions.ServiceError)
-        and error.status in {401, 403}
-    )
 
 
 class ObjectStorageClientProtocol(Protocol):
@@ -56,7 +46,15 @@ def build_original_object_name(filename: str, content: bytes) -> str:
 
 
 def build_generated_object_name(payload: InputSchema) -> str:
-    """Construye el patrón del brief con una secuencia derivada del input."""
+    """
+    Construye un nombre de objeto determinista e idempotente para OCI.
+
+    Decisión de diseño (NM-27):
+    A partir de los metadatos y el hash canónico del payload de entrada, se genera
+    un nombre fijo. Peticiones con la misma entrada generarán exactamente el mismo
+    'objeto_id', asegurando que la operación sea idempotente y sobrescriba el objeto
+    previo en el bucket.
+    """
     canonical_payload = json.dumps(
         payload.model_dump(mode="json"),
         ensure_ascii=False,
@@ -104,7 +102,13 @@ class OCIStorageService:
         response: OutputSchema,
     ) -> OutputSchema:
         object_name = build_generated_object_name(payload)
+        documento_id = (
+            payload.documento_id
+            or documento_id_desde_contenido(payload.documento_contenido)
+        )
         completed_storage = AlmacenamientoOCISchema(
+            documento_id=documento_id,
+            objeto_origen_id=payload.objeto_origen_id,
             bucket=self._bucket_name,
             objeto_id=object_name,
             status_upload="completado",
@@ -114,6 +118,8 @@ class OCIStorageService:
             object_name=object_name,
             content=package.model_dump_json().encode("utf-8"),
             content_type="application/json",
+            documento_id=documento_id,
+            objeto_origen_id=payload.objeto_origen_id,
         )
         return response.model_copy(update={"almacenamiento_oci": upload})
 
@@ -123,6 +129,8 @@ class OCIStorageService:
         object_name: str,
         content: bytes,
         content_type: str,
+        documento_id: str | None = None,
+        objeto_origen_id: str | None = None,
     ) -> AlmacenamientoOCISchema:
         try:
             self._client.put_object(
@@ -133,6 +141,22 @@ class OCIStorageService:
                 content_type=content_type,
             )
             status_upload = "completado"
+        except oci.exceptions.ServiceError as error:
+            if error.status in (401, 403):
+                logger.error(
+                    "Error de autenticación o permisos en OCI (%s) [request_id=%s].",
+                    type(error).__name__,
+                    get_request_id(),
+                )
+                raise OCIAuthenticationError() from error
+
+            logger.error(
+                "Falló la carga del objeto '%s' en OCI Object Storage (%s) [request_id=%s].",
+                object_name,
+                type(error).__name__,
+                get_request_id(),
+            )
+            status_upload = "error"
         except Exception as error:
             logger.error(
                 "Falló la carga del objeto '%s' en OCI Object Storage (%s) [request_id=%s].",
@@ -140,13 +164,11 @@ class OCIStorageService:
                 type(error).__name__,
                 get_request_id(),
             )
-
-            if _is_oci_authentication_error(error):
-                raise OCIAuthenticationError() from error
-
             status_upload = "error"
 
         return AlmacenamientoOCISchema(
+            documento_id=documento_id,
+            objeto_origen_id=objeto_origen_id,
             bucket=self._bucket_name,
             objeto_id=object_name,
             status_upload=status_upload,
@@ -172,35 +194,32 @@ def _build_api_key_config(app_settings: Settings) -> dict[str, str]:
         config["pass_phrase"] = app_settings.OCI_KEY_PASSPHRASE.get_secret_value()
     return config
 
+
 def build_object_storage_client(app_settings: Settings) -> ObjectStorageClientProtocol:
     if app_settings.OCI_AUTH_MODE == "instance_principal":
         try:
             signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
-            return oci.object_storage.ObjectStorageClient(
-                config={},
-                signer=signer,
-            )
+            return oci.object_storage.ObjectStorageClient(config={}, signer=signer)
         except Exception as error:
             logger.error(
-                "No se pudo autenticar con OCI Object Storage (%s) [request_id=%s].",
+                "No se pudo inicializar OCI Object Storage (%s) [request_id=%s].",
                 type(error).__name__,
                 get_request_id(),
             )
             raise OCIAuthenticationError() from error
 
-    # Si faltan variables de configuración, conserva el ValueError original.
     config = _build_api_key_config(app_settings)
-
     try:
         oci.config.validate_config(config)
         return oci.object_storage.ObjectStorageClient(config)
     except Exception as error:
         logger.error(
-            "No se pudo autenticar con OCI Object Storage (%s) [request_id=%s].",
+            "No se pudo inicializar OCI Object Storage (%s) [request_id=%s].",
             type(error).__name__,
             get_request_id(),
         )
         raise OCIAuthenticationError() from error
+
 
 def get_oci_storage_service() -> OCIStorageService:
     if not settings.OCI_NAMESPACE:
