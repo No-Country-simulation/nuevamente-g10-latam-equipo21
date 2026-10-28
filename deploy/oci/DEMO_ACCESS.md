@@ -122,6 +122,17 @@ WebSocket, carga y descarga desde el navegador sobre este release. Ese recorrido
 se debe comprobar con el procedimiento anterior; no se infiere de que el login
 responda HTTP 200.
 
+### Validación adicional de persistencia: 28 de octubre de 2026
+
+La prueba de NM-27 con un archivo Markdown real en la API interna de la VM
+confirmó ambos objetos en OCI, la integridad del original y la conservación de
+`documento_id` y `objeto_origen_id` en el paquete generado y persistido. Los
+detalles y nombres de objetos se registran en
+[la guía de despliegue](README.md#validaciones).
+
+Esta prueba no atravesó el acceso público ni la interfaz del navegador; la
+comprobación autenticada indicada arriba sigue pendiente.
+
 ### Antecedente: acceso del 18 de octubre de 2026
 
 La configuración anterior con el cuadro de autenticación del navegador se validó

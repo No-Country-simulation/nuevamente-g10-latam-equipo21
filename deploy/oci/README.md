@@ -307,6 +307,35 @@ y las tres imágenes `develop-10d17ea` para rollback. Se liberaron 2.16 GB de
 caché Docker de construcción no utilizada, conservando imágenes versionadas y
 volúmenes; el filesystem raíz quedó al 79% (6.2 GB libres).
 
+### Validación de NM-27 con archivo real: 28 de octubre de 2026
+
+Sobre el mismo release desplegado `18f2b41` se ejecutó una prueba adicional con
+un archivo Markdown sintético de 1571 bytes, `nm27-validacion-20261028.md`.
+Se llamó a `/documents/extract` y luego a `/adaptar-contenido` desde dentro del
+backend en la VM, reenviando el identificador del documento, el objeto original
+y las páginas devueltas por la extracción.
+
+- Extracción y adaptación: HTTP 200; ambas cargas OCI completadas.
+- Generación real Principiante / Resumen Ejecutivo / General / Introductorio:
+  6 ítems, score de anclaje `1.0`; recorrido completo de la prueba en 20.28 s.
+- Lectura independiente de ambos objetos mediante Instance Principal: HTTP 200.
+- Contenido del original leído de OCI idéntico, byte a byte, al archivo enviado.
+- `documento_id` y `objeto_origen_id` coincidentes entre extracción, respuesta de
+  adaptación y JSON persistido. El paquete leído de OCI coincide con la respuesta.
+
+Objetos conservados en el bucket para identificar esta prueba:
+
+```text
+originales/ff83118d25f75a70-nm27-validacion-20261028.md
+contenido-validacion-nm27-archivo-20261028-principiante-resumen-ejecutivo-3e970ea25e06.json
+```
+
+Esta comprobación valida el vínculo original-paquete en el backend desplegado
+y en Object Storage. Al invocar la API interna, no atraviesa Traefik, el login
+ni la carga desde Streamlit por la URL pública. Ese recorrido autenticado sigue
+pendiente y no se considera cubierto por esta prueba. Los resultados de tiempo
+y calidad corresponden únicamente a este documento.
+
 ### Regresión local antes del despliegue
 
 Con las dependencias de backend y frontend instaladas en el entorno de pruebas:
