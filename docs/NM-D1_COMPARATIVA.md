@@ -1,5 +1,10 @@
 # NM-D1 — Comparativa de calidad antes y después del refactor multi-agente
 
+> Evidencia histórica de NM-D1. Los resultados y las 108 pruebas corresponden al
+> estado de esa comparación, no a la suite del release final. La integración del
+> grafo con el endpoint se completó posteriormente en NM-28; el estado vigente se
+> describe en [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Objetivo
 
 Documentar el comportamiento del pipeline antes y después de incorporar
@@ -18,8 +23,8 @@ Documento provisional de prueba:
 
 `backend/tests/fixtures/Curso Python e Inteligencia Artificial.pdf`
 
-Este documento se utiliza mientras el equipo confirma el documento
-técnico oficial para la demo de NM-17.
+Este fue el documento provisional utilizado para la comparación, previo a la
+confirmación del material oficial de NM-17. Se conserva como fixture reproducible.
 
 El script permite reemplazar posteriormente la ruta, identificador y
 título del documento sin modificar la lógica de comparación.
@@ -154,23 +159,25 @@ El script:
 5. ejecuta el flujo multi-agente NM-D1;
 6. imprime los scores de anclaje, claridad e iteraciones.
 
-Actualmente el documento utilizado es provisional:
+El script conserva como fixture de esta comparación:
 
 `tests/fixtures/Curso Python e Inteligencia Artificial.pdf`
 
-Cuando NM-17 defina el documento oficial de demo, deben actualizarse
-`DOCUMENT_PATH`, `DOCUMENT_ID` y `DOCUMENT_TITLE` en
-`scripts/comparar_nm_d1.py`.
+Para repetir la comparación con otra fuente, ajustar `DOCUMENT_PATH`,
+`DOCUMENT_ID` y `DOCUMENT_TITLE` en `scripts/comparar_nm_d1.py`. Los nuevos
+resultados deben registrarse por separado de las mediciones históricas anteriores.
 
 ## Integración con el flujo productivo
 
-NM-D1 implementa y valida la orquestación multi-agente como servicio
-independiente.
+NM-D1 implementó y validó la orquestación multi-agente como servicio independiente,
+consumido inicialmente por los tests y por este script.
 
-La conexión del grafo con el endpoint y la pipeline integral corresponde
-al trabajo de NM-12. Por este motivo, en este ticket el grafo es consumido
-por los tests automatizados y por el script de comparación, sin modificar
-todavía el contrato ni el endpoint público.
+NM-28 ([PR #83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83))
+integró posteriormente el grafo en `POST /api/v1/adaptar-contenido` mediante
+`AdaptacionMultiAgenteService`. Se selecciona con `USE_MOCK_LLM=false` y
+`USE_MULTIAGENT=true`; el flujo lineal sigue siendo el valor predeterminado.
+Ambos recorridos reutilizan contexto RAG, metadatos y persistencia, y aplican la
+política de advertencias de fidelidad de NM-32 al resultado final.
 
 ## Conclusión
 
@@ -183,6 +190,5 @@ Agente Crítico devuelva observaciones al Redactor junto con la versión
 anterior del contenido y controle una nueva iteración hasta alcanzar el
 límite configurado.
 
-El documento utilizado en esta comparación es provisional y será
-reemplazado por el documento oficial de NM-17 cuando el equipo lo
-confirme.
+El documento y los scores de esta comparación se conservan como evidencia de
+NM-D1; no certifican por sí solos la demo de NM-17 ni el release desplegado actual.

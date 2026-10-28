@@ -101,7 +101,60 @@ clave válida, la generación y la descarga. Después de visitar `/salir`, la
 portada y la descarga deben volver a pedir inicio de sesión. No usar `curl -k`,
 ya que omite la validación del certificado.
 
-La configuración anterior con el cuadro del navegador se validó el **18 de octubre de 2026**:
+### Comprobación del release actual: 27 de octubre de 2026
+
+El release activo es `18f2b415f7fa88ab0cc3c5a35e28b42f40bf28c7`, con imágenes
+`develop-18f2b41` de backend, frontend y acceso. Los tres servicios quedaron
+`healthy`, sin reinicios ni errores recientes de tipo traceback, al finalizar
+la actualización.
+
+- La portada HTTPS redirigió con HTTP 303 a `/acceso` y el login respondió HTTP 200.
+- La ruta pública `/api/v1/health` también redirigió al acceso; no expuso la API.
+- El backend respondió HTTP 200 desde el frontend y no publicó el puerto 8000;
+  la conexión directa externa a ese puerto no se completó.
+- La suite local aprobó 388 pruebas backend, 113 frontend y 5 del servicio de
+  acceso: **506 aprobadas** y una integración OCI omitida. Una generación interna
+  con Gemini y persistencia real en Object Storage se verificó por separado.
+
+La evidencia y el objeto de prueba están en [la guía de despliegue](README.md#validaciones).
+Estos controles HTTP no repitieron el inicio de sesión con credenciales, logout,
+WebSocket, carga y descarga desde el navegador sobre este release. La prueba
+pública del 28 de octubre, descrita más abajo, añadió carga, generación y descarga
+con sesión autenticada; ese resultado no se infiere del HTTP 200 del login.
+
+### Validación adicional de persistencia: 28 de octubre de 2026
+
+La prueba de NM-27 con un archivo Markdown real en la API interna de la VM
+confirmó ambos objetos en OCI, la integridad del original y la conservación de
+`documento_id` y `objeto_origen_id` en el paquete generado y persistido. Los
+detalles y nombres de objetos se registran en
+[la guía de despliegue](README.md#validaciones).
+
+Esta ejecución interna no atravesó el acceso público ni la interfaz del navegador;
+la comprobación siguiente cubrió ese recorrido por separado.
+
+### Prueba autenticada desde el navegador: 28 de octubre de 2026
+
+Después de iniciar sesión, se cargó el archivo sintético
+`nm27-validacion-20261028.md` por la URL pública, se generó un Resumen Ejecutivo
+para Principiante y se descargó el JSON mediante la interfaz.
+
+- La interfaz mostró el archivo y los parámetros aplicados, 6 ítems generados,
+  anclaje del 100%, claridad Alta y confirmación de guardado en OCI.
+- El JSON descargado coincide con el objeto persistido en el bucket.
+- La lectura independiente de original y paquete devolvió HTTP 200; el original
+  conserva sus 1571 bytes y el paquete mantiene correctamente el identificador
+  del documento y el vínculo al objeto original.
+
+La evidencia detallada y las claves de objetos están en
+[la guía de despliegue](README.md#validaciones). La prueba completa NM-27 para
+este archivo; no repitió el ciclo de logout, el rechazo de descargas sin sesión
+ni una comprobación independiente del código HTTP del handshake WebSocket.
+
+### Antecedente: acceso del 18 de octubre de 2026
+
+La configuración anterior con el cuadro de autenticación del navegador se validó
+el **18 de octubre de 2026**:
 
 - Acceso sin credenciales o con clave incorrecta: 401. Con credenciales: 200.
 - HTTPS válido en ambos nombres y redirección de `www` conservando ruta y consulta.
@@ -109,11 +162,11 @@ La configuración anterior con el cuadro del navegador se validó el **18 de oct
   de persistencia OCI `completado`. Descarga del JSON: 200 con credenciales y
   401 sin ellas.
 - IP directa por HTTP: 404; puertos 8000/8501 sin conexión pública. Techretai: 200.
-- Suite local: 272 pruebas aprobadas y 1 integración OCI omitida. La prueba
-  funcional real anterior se ejecutó por separado. La página nueva requiere
-  repetir estas comprobaciones después de desplegarla.
+- Suite local de esa fecha: 272 pruebas aprobadas y 1 integración OCI omitida.
+  La prueba funcional real anterior se ejecutó por separado. Estos resultados
+  corresponden al mecanismo anterior, no validan el formulario actual.
 
-El release de configuración es
+El release de configuración utilizado en esa validación fue
 `/opt/apps/apps/nuevamente/releases/nm39-access-20261018`. Se conservaron las
 imágenes de la aplicación. La prueba funcional usó el protocolo de Streamlit;
 no cubre revisión visual ni documentos largos.

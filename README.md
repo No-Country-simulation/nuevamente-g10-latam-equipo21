@@ -23,13 +23,16 @@ El caso de uso principal pertenece al sector **EdTech**, con contextualización 
 - Segmentación, embeddings e indexación local con ChromaDB.
 - Recuperación de contexto relevante antes de generar contenido.
 - Adaptación mediante Google Gemini con salida estructurada.
-- Flujo multi-agente experimental con Investigador RAG, Redactor Pedagógico y Crítico/Revisor.
+- Flujo multi-agente seleccionable con Investigador RAG, Redactor Pedagógico y Crítico/Revisor.
+- Interpretación de imágenes y diagramas técnicos embebidos en PDF con texto extraíble.
 - Cinco formatos pedagógicos: Tutorial, Flashcards, Quiz, Resumen Ejecutivo y Guion de Clase.
 - Evaluación de fidelidad y claridad pedagógica.
 - Metadatos de aprendizaje y estimación del tiempo de estudio.
 - Persistencia de documentos y resultados en OCI Object Storage.
 - API REST con FastAPI y contratos validados mediante Pydantic v2.
 - Interfaz Streamlit para cargar documentos y configurar la adaptación.
+- Quiz interactivo con retroalimentación y avisos sobre preguntas que requieren revisión.
+- Descarga en JSON, Markdown y PDF; exportación de Flashcards a CSV para Anki.
 - Despliegue de FastAPI y Streamlit en OCI Compute mediante contenedores Docker.
 
 ## Arquitectura
@@ -38,6 +41,8 @@ El caso de uso principal pertenece al sector **EdTech**, con contextualización 
 flowchart TD
     A[Documento PDF / MD / TXT] --> B[Extracción y normalización]
     B --> C[Chunking]
+    B -- imágenes de PDF --> V[Interpretación multimodal con Gemini]
+    V -- descripciones con página de origen --> C
     C --> D[Embeddings]
     D --> E[(ChromaDB)]
     E --> F[Retrieval semántico]
@@ -113,7 +118,7 @@ una evaluación sintética, no valida la suficiencia de la fuente ni llama a pro
 | Interfaz | Streamlit |
 | Validación | Pydantic v2 |
 | LLM y embeddings | Google Gemini |
-| Orquestación | LangChain (endpoint del MVP) + LangGraph (flujo experimental) |
+| Orquestación | LangChain + LangGraph, seleccionables desde el endpoint |
 | Base vectorial | ChromaDB |
 | Persistencia | OCI Object Storage |
 | Despliegue | OCI Compute + Docker Compose + Traefik |
@@ -128,9 +133,11 @@ una evaluación sintética, no valida la suficiencia de la fuente ni llama a pro
 | Pipeline lineal | Integrado en `POST /api/v1/adaptar-contenido`. |
 | Flujo multi-agente | Integrado en el endpoint mediante NM-28 ([#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83)), seleccionable con `USE_MULTIAGENT=true` y `USE_MOCK_LLM=false`. |
 | Frontend Streamlit | Implementado y conectado a los endpoints de extracción y adaptación de FastAPI. |
-| Despliegue OCI Compute | Streamlit con acceso HTTPS y autenticación, FastAPI sin publicación directa y persistencia real en Object Storage. Validación funcional con un documento corto de 1112 bytes y un escenario Principiante/Tutorial. |
-| Vínculo entre original y paquete | Pendiente de completar en NM-27: los objetos se persisten, pero el paquete todavía no referencia al original. |
-| Contrato uniforme de errores | Pendiente en NM-21 para los casos que aún responden fuera del sobre común. |
+| Despliegue OCI Compute | Backend, frontend y servicio de acceso saludables con el release `18f2b41`, validado el 27 de octubre de 2026 con Gemini y Object Storage reales. |
+| Vínculo entre original y paquete | Integrado mediante NM-27: `documento_id` y `objeto_origen_id` se conservan en la respuesta y en el JSON persistido. |
+| Contrato uniforme de errores | Integrado mediante NM-21: errores de dominio, validación, HTTP y fallos inesperados usan el sobre `status` / `error`. |
+| Diagramas técnicos | NM-D4 integrado: extracción, interpretación multimodal e inclusión de las descripciones en el contexto RAG. |
+| Quiz y exportaciones | NM-D3 y NM-D5 integrados: respuestas interactivas, explicación inmediata y exportación del paquete. |
 
 ## Estructura del repositorio
 
@@ -154,10 +161,13 @@ frontend/
 ├── .env.example             # URL local de la API
 └── requirements.txt         # Dependencias del frontend
 deploy/oci/
-├── compose.backend.yml      # Backend y frontend; solo el frontend se publica mediante Traefik
+├── compose.backend.yml      # Backend, frontend y demo_auth; acceso público mediante Traefik
+├── demo_auth/               # Página de acceso y verificación de sesiones
+├── DEMO_ACCESS.md           # Acceso protegido y comprobaciones
 └── README.md                # Guía operativa de despliegue en OCI Compute
 docs/
-└── ARCHITECTURE.md         # Arquitectura y contratos oficiales
+├── ARCHITECTURE.md          # Arquitectura y contratos oficiales
+└── NM-D1_COMPARATIVA.md     # Evidencia histórica de la comparativa multiagente
 ```
 
 ## Requisitos
@@ -259,9 +269,13 @@ Las variables disponibles se encuentran en [`backend/.env.example`](backend/.env
 | `DIAGRAM_MAX_IMAGES_PER_DOCUMENT` | `10` | Máximo de imágenes interpretadas por PDF antes de rechazar la solicitud. |
 | `DIAGRAM_MIN_IMAGE_AREA_PIXELS` | `10000` | Área mínima para interpretar una imagen y descartar íconos pequeños. |
 | `CHROMA_PERSIST_DIRECTORY` | `./chroma_db` | Directorio local de ChromaDB. |
-| `RETRIEVAL_TOP_K` | `5` | Cantidad máxima de fragmentos recuperados. |
+| `RETRIEVAL_TOP_K` | `5` | Límite de recuperación de una consulta simple; el flujo por ventanas utiliza cupos por zona. |
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.35` | Umbral mínimo de similitud. |
-| `RETRIEVAL_MAX_CONTEXT_TOKENS` | `2000` | Límite del contexto ensamblado. |
+| `RETRIEVAL_MAX_CONTEXT_TOKENS` | `6000` | Presupuesto global aproximado del contexto ensamblado, incluidas sus referencias. |
+| `RETRIEVAL_MAX_VENTANAS` | `10` | Máximo de zonas del documento consultadas para ampliar cobertura. |
+| `RETRIEVAL_VENTANA_CHARS` | `2000` | Tamaño utilizado para calcular la cantidad de ventanas. |
+| `RETRIEVAL_VENTANA_CANDIDATOS` | `8` | Mínimo de candidatos solicitados por ventana; puede crecer según su cupo. |
+| `RETRIEVAL_FRAGMENTOS_POR_VENTANA` | `2` | Cupo mínimo por zona, sujeto a candidatos disponibles y al presupuesto global. |
 | `FIDELITY_SCORE_THRESHOLD` | `0.7` | Umbral de fidelidad contra la fuente. |
 | `DOCUMENT_MIN_WORDS` | `30` | Mínimo preventivo de palabras antes de indexar y generar en el flujo real. |
 | `MULTI_AGENT_MAX_ITERATIONS` | `3` | Máximo de iteraciones Redactor-Crítico del flujo multi-agente. |
@@ -344,7 +358,9 @@ La demo cuenta con HTTPS y autenticación mediante usuario y contraseña. El acc
 de evaluadores, las pruebas externas y la limpieza administrativa del bucket se
 describen en [la guía de acceso protegido](deploy/oci/DEMO_ACCESS.md).
 
-Traefik publica únicamente la interfaz. FastAPI no publica puertos en el host
+Traefik publica Streamlit y las rutas del servicio `demo_auth` para iniciar y
+cerrar sesión. `ForwardAuth` verifica la cookie antes de servir la interfaz.
+FastAPI no publica puertos en el host
 ni tiene una ruta habilitada en Traefik; el frontend lo consume mediante la red
 `backend_internal`. El backend también está conectado a `proxy` para tener
 egreso hacia Gemini, OCI y el servicio de metadatos de Instance Principal:
@@ -356,10 +372,23 @@ La construcción de imágenes, configuración de Vault, inicio de servicios,
 health checks y prueba end-to-end de persistencia están documentados en
 [`deploy/oci/README.md`](deploy/oci/README.md).
 
-La validación funcional del release utilizó un documento de 1112 bytes y el
-escenario Principiante/Tutorial mediante `AppTest`, con backend y proveedores
-reales. El acceso HTTP público se comprobó por separado. No se probó una
-generación completa desde el navegador ni el comportamiento con documentos largos.
+El 27 de octubre de 2026 se desplegó `18f2b41`, cuyo contenido coincide con el
+merge final `29345a7` de `main` ([PR #105](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/105)).
+Los tres contenedores quedaron saludables. Una petición interna de prueba
+Principiante/Resumen Ejecutivo generó 5 ítems con Gemini, score de anclaje `1.0`
+y persistencia `completado`; una consulta independiente a OCI confirmó el JSON
+con HTTP 200. Desde fuera se verificaron la redirección a `/acceso`, la página de
+login con HTTP 200 y la falta de acceso público directo al puerto 8000.
+
+El 28 de octubre se completó además el recorrido autenticado desde el navegador:
+carga de un Markdown sintético de 1571 bytes, generación, descarga del JSON y
+lectura independiente de ambos objetos en OCI. El original conserva sus bytes,
+el paquete coincide con la descarga y mantiene correctamente `documento_id` y
+`objeto_origen_id`. Se generaron 6 ítems con anclaje `1.0` y sin advertencias.
+
+Estas pruebas no cubren documentos largos, PDF con diagramas ni failover del
+modelo. La evidencia detallada y los antecedentes de NM-D2 mediante `AppTest`
+se conservan en la guía de despliegue.
 
 ## Ejecución
 
@@ -446,6 +475,21 @@ Desde `frontend/`, con el entorno virtual del frontend activo:
 python -m pytest tests -q
 ```
 
+El entorno de pruebas del frontend necesita Pytest además de sus dependencias
+de ejecución (`python -m pip install pytest==9.1.1`). Para comprobar el servicio
+de acceso, desde la raíz del repositorio y con las dependencias de
+`deploy/oci/demo_auth/requirements.txt`, Pytest y HTTPX instalados:
+
+```powershell
+python -m pytest deploy/oci/demo_auth/test_app.py -q
+```
+
+La regresión del 27 de octubre de 2026 sobre `18f2b41`, con Python 3.12.10,
+obtuvo **388 passed, 1 skipped** en backend, **113 passed** en frontend y
+**5 passed** en autenticación: **506 pruebas aprobadas**. La integración real
+OCI es opt-in y fue la única omitida en esa suite. Por separado se construyeron
+las tres imágenes Docker y se comprobó el arranque de backend y frontend.
+
 La prueba contra el bucket real es opt-in para evitar escrituras accidentales durante una ejecución normal:
 
 ```powershell
@@ -469,7 +513,17 @@ curl -X POST "http://127.0.0.1:8000/api/v1/documents/extract" \
   -F "file=@documento.pdf"
 ```
 
-La respuesta entrega el texto normalizado en `text` y los datos del archivo en `metadata`. Ese texto puede utilizarse como `documento_contenido` en la solicitud de adaptación.
+La respuesta entrega `text`, `pages`, `metadata`, `documento_id`, `objeto_id` y
+`status_upload`. Si se interpretaron imágenes, también incluye `diagramas` con
+su descripción, página, índice y nombre. El frontend reenvía `text` como
+`documento_contenido`, `pages` como `documento_paginas`, el identificador estable,
+`objeto_id` como `objeto_origen_id` solo si la carga fue exitosa, y `diagramas`.
+
+NM-D4 procesa imágenes embebidas de PDF con texto extraíble. Descarta imágenes
+pequeñas según `DIAGRAM_MIN_IMAGE_AREA_PIXELS` y rechaza antes de consumir Gemini
+los documentos que superan `DIAGRAM_MAX_IMAGES_PER_DOCUMENT` candidatos. Una
+imagen inválida o cuya interpretación falla se omite y se conserva la extracción
+textual. Los PDF escaneados sin texto requieren OCR y quedan fuera de alcance.
 
 ### 2. Adaptar el contenido
 
@@ -480,7 +534,7 @@ Request de ejemplo:
 ```json
 {
   "documento_titulo": "Introducción a las redes VCN",
-  "documento_contenido": "Una Virtual Cloud Network es una red privada y configurable dentro de Oracle Cloud Infrastructure.",
+  "documento_contenido": "Una Virtual Cloud Network es una red privada y configurable dentro de Oracle Cloud Infrastructure. Sus subredes organizan los recursos. Un Internet Gateway permite la conexión a Internet cuando las rutas y las reglas de seguridad lo autorizan.",
   "perfil_destinatario": "Principiante",
   "formato_salida": "Flashcards",
   "nicho_sector": "General",
@@ -514,15 +568,25 @@ Response de ejemplo:
   "evaluacion_calidad": {
     "anclaje_fuente_score": 0.95,
     "claridad_pedagogica": "Alta",
-    "observaciones": "El contenido se encuentra respaldado por la fuente."
+    "observaciones": "El contenido se encuentra respaldado por la fuente.",
+    "umbral_fidelidad": 0.7,
+    "requiere_revision": false,
+    "afirmaciones_no_respaldadas": []
   },
   "almacenamiento_oci": {
+    "documento_id": "identificador-derivado-del-texto",
+    "objeto_origen_id": null,
     "bucket": "nuevamente-contenidos-educativos",
     "objeto_id": "contenido-introduccion-a-las-redes-vcn-principiante-flashcards-a1b2c3d4e5f6.json",
     "status_upload": "completado"
   }
 }
 ```
+
+Los identificadores del ejemplo son ilustrativos. `objeto_origen_id` queda nulo
+cuando se adapta texto directo sin una carga previa; al reenviar el objeto
+original de la extracción, el paquete conserva ese vínculo. La estructura
+completa está descrita en [Arquitectura y contratos](docs/ARCHITECTURE.md).
 
 Valores admitidos:
 
@@ -537,7 +601,7 @@ Valores admitidos:
 
 - Una entrada inválida devuelve HTTP 422 con `status: "error"` y el bloque `error` (`codigo`, `mensaje`).
 - Un fallo del LLM o del vector store devuelve HTTP 502 sin exponer trazas ni credenciales.
-- Un fallo de OCI no invalida el contenido generado: devuelve HTTP 200 con `almacenamiento_oci.status_upload: "error"`.
+- Un fallo ordinario de carga en OCI no invalida el contenido generado: devuelve HTTP 200 con `almacenamiento_oci.status_upload: "error"`. Los errores de autenticación o permisos devuelven HTTP 502 con `OCI_AUTENTICACION_ERROR`.
 - Los errores quedan asociados a un identificador de petición en los logs del backend.
 
 Ejemplo de entrada inválida:
@@ -592,7 +656,7 @@ Estados revisados al 27 de octubre de 2026 (UTC).
 | 8 oct 2026 | NM-23 | Trazabilidad de la página de origen. | Hernan Rojas | [#62](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/62) | Leandro Melchiori | Integrado |
 | 8 oct 2026 | NM-24 | Tipado estricto y validación de items según formato. | Leandro Melchiori | [#64](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/64) | Hernan Rojas | Integrado |
 | 8 oct 2026 | NM-25 | Validación de configuración y protección de credenciales. | Ever Ayala | [#67](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/67) | Leandro Melchiori | Integrado |
-| 19 oct 2026 | NM-26 | Integración de `develop` en `main`, tag y limpieza de ramas. | Leandro Melchiori | [#88](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/88) | Ever Ayala | Pase a `main` integrado; tag y limpieza de ramas pendientes |
+| 19 y 27 oct 2026 | NM-26 | Integración de `develop` en `main`, tag y limpieza de ramas. | Leandro Melchiori | [#88](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/88), release final [#105](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/105) | Ever Ayala | Release final integrado en `main`; tag y limpieza de la última rama integrada pendientes |
 | 25 oct 2026 | NM-27 | Persistencia end-to-end y vínculo entre original y paquete. | Miguel Acosta | [#70](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/70) | Leandro Melchiori | Integrado |
 | 16 oct 2026 | NM-28 | Exposición del flujo multiagente desde el endpoint. | Gustavo | [#83](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/83) | Ever Ayala | Integrado |
 | 19 oct 2026 | NM-29 | Procesamiento de embeddings en lotes de hasta 100 fragmentos. | Ever Ayala | [#87](https://github.com/No-Country-simulation/nuevamente-g10-latam-equipo21/pull/87) | Leandro Melchiori | Integrado |
