@@ -380,9 +380,15 @@ y persistencia `completado`; una consulta independiente a OCI confirmó el JSON
 con HTTP 200. Desde fuera se verificaron la redirección a `/acceso`, la página de
 login con HTTP 200 y la falta de acceso público directo al puerto 8000.
 
-Esta prueba de actualización no repitió una generación completa desde el
-navegador, documentos largos ni un PDF con diagramas. La evidencia anterior de
-NM-D2 mediante `AppTest` se conserva como histórica en la guía de despliegue.
+El 28 de octubre se completó además el recorrido autenticado desde el navegador:
+carga de un Markdown sintético de 1571 bytes, generación, descarga del JSON y
+lectura independiente de ambos objetos en OCI. El original conserva sus bytes,
+el paquete coincide con la descarga y mantiene correctamente `documento_id` y
+`objeto_origen_id`. Se generaron 6 ítems con anclaje `1.0` y sin advertencias.
+
+Estas pruebas no cubren documentos largos, PDF con diagramas ni failover del
+modelo. La evidencia detallada y los antecedentes de NM-D2 mediante `AppTest`
+se conservan en la guía de despliegue.
 
 ## Ejecución
 

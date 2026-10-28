@@ -118,9 +118,9 @@ la actualización.
 
 La evidencia y el objeto de prueba están en [la guía de despliegue](README.md#validaciones).
 Estos controles HTTP no repitieron el inicio de sesión con credenciales, logout,
-WebSocket, carga y descarga desde el navegador sobre este release. Ese recorrido
-se debe comprobar con el procedimiento anterior; no se infiere de que el login
-responda HTTP 200.
+WebSocket, carga y descarga desde el navegador sobre este release. La prueba
+pública del 28 de octubre, descrita más abajo, añadió carga, generación y descarga
+con sesión autenticada; ese resultado no se infiere del HTTP 200 del login.
 
 ### Validación adicional de persistencia: 28 de octubre de 2026
 
@@ -130,8 +130,26 @@ confirmó ambos objetos en OCI, la integridad del original y la conservación de
 detalles y nombres de objetos se registran en
 [la guía de despliegue](README.md#validaciones).
 
-Esta prueba no atravesó el acceso público ni la interfaz del navegador; la
-comprobación autenticada indicada arriba sigue pendiente.
+Esta ejecución interna no atravesó el acceso público ni la interfaz del navegador;
+la comprobación siguiente cubrió ese recorrido por separado.
+
+### Prueba autenticada desde el navegador: 28 de octubre de 2026
+
+Después de iniciar sesión, se cargó el archivo sintético
+`nm27-validacion-20261028.md` por la URL pública, se generó un Resumen Ejecutivo
+para Principiante y se descargó el JSON mediante la interfaz.
+
+- La interfaz mostró el archivo y los parámetros aplicados, 6 ítems generados,
+  anclaje del 100%, claridad Alta y confirmación de guardado en OCI.
+- El JSON descargado coincide con el objeto persistido en el bucket.
+- La lectura independiente de original y paquete devolvió HTTP 200; el original
+  conserva sus 1571 bytes y el paquete mantiene correctamente el identificador
+  del documento y el vínculo al objeto original.
+
+La evidencia detallada y las claves de objetos están en
+[la guía de despliegue](README.md#validaciones). La prueba completa NM-27 para
+este archivo; no repitió el ciclo de logout, el rechazo de descargas sin sesión
+ni una comprobación independiente del código HTTP del handshake WebSocket.
 
 ### Antecedente: acceso del 18 de octubre de 2026
 

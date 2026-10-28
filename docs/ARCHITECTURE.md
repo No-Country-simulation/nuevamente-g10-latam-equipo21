@@ -390,7 +390,9 @@ Prefijos: `feat`, `fix`, `docs`, `chore`, `test`, `refactor`.
 - [x] Regresión del release: 388 pruebas backend, 113 frontend y 5 autenticación aprobadas (506 en total); una integración OCI omitida en la suite local y prueba real de persistencia ejecutada por separado.
 - [ ] Crear el tag de release y completar la limpieza de la última rama remota integrada (NM-26).
 
-La prueba OCI de actualización del 27 de octubre no cubre una generación completa
-desde el navegador, documentos largos ni un PDF con diagramas en la VM. Las
-evidencias históricas y el alcance de cada comprobación se conservan en
+El 28 de octubre se comprobó adicionalmente NM-27 desde el navegador autenticado:
+carga de un archivo Markdown, generación, descarga y comparación del paquete
+con el JSON persistido, verificando también la integridad y el vínculo al original
+en OCI. Estas pruebas no cubren documentos largos, PDF con diagramas ni failover
+del modelo en la VM. Las evidencias históricas y el alcance de cada comprobación se conservan en
 [la guía de despliegue](../deploy/oci/README.md).

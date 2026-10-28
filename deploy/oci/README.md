@@ -332,9 +332,40 @@ contenido-validacion-nm27-archivo-20261028-principiante-resumen-ejecutivo-3e970e
 
 Esta comprobación valida el vínculo original-paquete en el backend desplegado
 y en Object Storage. Al invocar la API interna, no atraviesa Traefik, el login
-ni la carga desde Streamlit por la URL pública. Ese recorrido autenticado sigue
-pendiente y no se considera cubierto por esta prueba. Los resultados de tiempo
-y calidad corresponden únicamente a este documento.
+ni la carga desde Streamlit por la URL pública. Ese recorrido se comprobó después
+en la prueba de navegador descrita a continuación. Los resultados de tiempo y
+calidad anteriores corresponden únicamente a la ejecución interna.
+
+### Validación pública de NM-27 desde el navegador: 28 de octubre de 2026
+
+Se completó el inicio de sesión en `https://nuevamente.sachadev.me/` y se cargó
+`nm27-validacion-20261028.md` mediante el selector de archivos de Streamlit.
+La interfaz utilizó el título `Validacion NM27 navegador publico 20261028` y los
+parámetros Principiante / Resumen Ejecutivo / General / Introductorio.
+
+- Streamlit mostró el resultado generado y la confirmación de almacenamiento OCI.
+- Gemini generó 6 ítems, con score de anclaje `1.0`, claridad `Alta` y
+  `requiere_revision=false`.
+- Se descargó el paquete mediante el botón `Descargar JSON` de la sesión pública.
+- Ambos objetos se leyeron de OCI mediante Instance Principal con HTTP 200.
+- El original conserva exactamente los 1571 bytes del archivo cargado.
+- El JSON descargado coincide, tras deserializarlo, con el paquete leído del bucket.
+- `documento_id=doc-fcdb25f9bfb45366` corresponde al texto normalizado del original;
+  `objeto_origen_id` referencia correctamente su objeto en OCI.
+
+Objetos de la prueba pública:
+
+```text
+originales/ff83118d25f75a70-nm27-validacion-20261028.md
+contenido-validacion-nm27-navegador-publico-20261028-principiante-resumen-ejecutivo-74d7449e1e2d.json
+```
+
+El original es el mismo de la prueba interna por su nombre determinista; el
+paquete público tiene otra clave porque cambió el título de entrada. Esta prueba
+cubre navegador autenticado, carga, extracción, generación, descarga y vínculo
+persistido de NM-27 para el archivo indicado. No probó documentos largos, PDF con
+diagramas, failover de modelo ni un nuevo ciclo de logout y rechazo de descargas
+sin sesión.
 
 ### Regresión local antes del despliegue
 
